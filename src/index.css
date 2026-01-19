@@ -1,0 +1,91 @@
+:root {
+  /* Dark Theme Palette */
+  --bg-color: #050505;
+  --text-color: #F8F9FA;
+  --text-muted: #ADB5BD;
+  --accent-color: #FF7120;
+  
+  /* Lighter grid lines for dark bg */
+  --grid-line: rgba(255, 255, 255, 0.04); 
+  
+  /* Dark Glass Effect */
+  --glass-bg: rgba(15, 15, 15, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --card-bg: rgba(255, 255, 255, 0.03);
+  
+  /* Typography - The "Web3 Native" Selection */
+  /* Sora is iconic in DeFi/Web3 for its squarish natural form */
+  --font-display: 'Sora', sans-serif;
+  /* Manrope is an excellent modern geometric sans */
+  --font-body: 'Manrope', sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: var(--font-body);
+  /* Precise 40px grid */
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: center top;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-color);
+  letter-spacing: -0.02em; /* Sora works well with standard or slightly tight tracking */
+}
+
+button {
+  font-family: var(--font-display);
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom Scrollbar for Dark Mode */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #000; 
+}
+::-webkit-scrollbar-thumb {
+    background: #333; 
+    border-radius: 3px;
+}
+
+/* Lenis Smooth Scroll Recommended Styles */
+html.lenis, html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+.lenis.lenis-scrolling iframe {
+  pointer-events: none;
+}

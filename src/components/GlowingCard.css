@@ -1,0 +1,60 @@
+.glowing-card-container {
+    position: relative;
+    border-radius: 1.5rem;
+    padding: 2px; /* acts as border width */
+    background: transparent;
+    overflow: visible; /* allow glow to spill */
+    isolation: isolate;
+  }
+  
+  .glowing-effect-border {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    /* This will be masked */
+    opacity: var(--active, 0);
+    transition: opacity 0.3s ease;
+  }
+  
+  /* The glow element itself */
+  .glowing-effect-border::before {
+    content: "";
+    position: absolute;
+    inset: -2px; /* Spread */
+    border-radius: inherit;
+    padding: 2px; /* Border width */
+    background: var(--gradient);
+    background-attachment: fixed; /* Critical for the effect */
+    
+    /* Reveal mask logic */
+    -webkit-mask: 
+      linear-gradient(#fff 0 0) content-box, 
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    
+    /* Conic mask for the spotlight effect */
+    mask-image: 
+        linear-gradient(transparent, transparent),
+        conic-gradient(
+            from calc(var(--start, 0) * 1deg), 
+            transparent 0deg, 
+            white, 
+            transparent calc(var(--spread, 60) * 1deg)
+        );
+    mask-composite: intersect;
+    -webkit-mask-composite: source-in; 
+  }
+  
+  .glowing-card-content {
+    position: relative;
+    background: var(--glass-bg); /* Use theme variable */
+    border-radius: inherit;
+    height: 100%;
+    z-index: 2;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    /* Border is handled by the container/glow, but we can keep a subtle inner border if needed */
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }

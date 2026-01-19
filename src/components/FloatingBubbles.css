@@ -1,0 +1,79 @@
+.bubble {
+    position: absolute;
+    height: 10px;
+    width: 10px;
+    background: #f6f6f6;
+    border-radius: 51% 49% 48% 52% / 62% 44% 56% 38%;
+    opacity: 0; /* Star invisible */
+    animation: move 10s infinite;
+    transform: scale(var(--scale)) rotate(var(--initial-rotate));
+    /* Performance Optimization */
+    will-change: transform, opacity;
+    /* Default vars just in case, though nth-child overrides all */
+    --scale: 1;
+    --initial-rotate: 0deg;
+  }
+  
+  .bubble::before {
+    content: "";
+    position: absolute;
+    height: 100%;
+    width: 100%;
+    background: #ffffff;
+    border-radius: 51% 49% 48% 52% / 62% 44% 56% 38%;
+    /* Adapted shadow for dark mode visibility - made slightly more translucent/glowy */
+    box-shadow: -1.5px 3px 1.2px rgba(120, 120, 120, 0.2), -3.5px 5px 3.5px rgba(120, 120, 120, 0), inset -0.5px 0.5px 0.9px rgba(102, 102, 102, 0.8), inset 0.15px 0.5px 0.9px #6a6a6a, inset 1.5px -1.5px 1.5px #ffffff, inset 5px -5px 5.5px rgba(161, 161, 161, 0.85);
+  }
+  
+  .bubble::after {
+    content: "";
+    position: absolute;
+    height: 20%;
+    width: 20%;
+    background: #e1e1e1;
+    border-radius: 44% 56% 46% 54% / 36% 50% 50% 64%;
+    left: 60%;
+    top: 20%;
+    box-shadow: 1.5px 5px 0 -0.9px white;
+    opacity: 1;
+  }
+  
+  @keyframes move {
+    0% {
+      transform: translateY(0) translateX(0) rotate(var(--initial-rotate)) scale(var(--scale));
+      opacity: 0;
+    }
+    10% {
+      opacity: 0.8;
+    }
+    100% {
+      transform: translateY(var(--translateY)) translateX(var(--translateX)) rotate(var(--rotate)) scale(var(--scale));
+      opacity: 0;
+    }
+  }
+
+  /* Extensive nth-child rules extracted from source */
+  .bubble:nth-child(1) { --translateY: -24px; --translateX: 50%; --rotate: 20deg; --scale: 0.92; --initial-rotate: -10deg; animation-duration: 6s; animation-delay: 0s; left: 58%; bottom: 18%; }
+  .bubble:nth-child(2) { --translateY: -35px; --translateX: -75%; --rotate: -15deg; --scale: 1.15; --initial-rotate: 5deg; animation-duration: 12s; animation-delay: 0.5s; left: 15%; bottom: 47%; }
+  .bubble:nth-child(3) { --translateY: -40px; --translateX: 100%; --rotate: 10deg; --scale: 0.57; --initial-rotate: -8deg; animation-duration: 13s; animation-delay: 1s; left: 90%; bottom: 82%; }
+  .bubble:nth-child(4) { --translateY: -30px; --translateX: -50%; --rotate: 5deg; --scale: 0.85; --initial-rotate: 2deg; animation-duration: 3s; animation-delay: 1.5s; left: 67%; bottom: 33%; }
+  .bubble:nth-child(5) { --translateY: -28px; --translateX: 125%; --rotate: -10deg; --scale: 0.78; --initial-rotate: -7deg; animation-duration: 10s; animation-delay: 2s; left: 96%; bottom: 90%; }
+  .bubble:nth-child(6) { --translateY: -50px; --translateX: -200%; --rotate: 33deg; --scale: 1.22; --initial-rotate: 10deg; animation-duration: 4s; animation-delay: 0s; left: 67%; bottom: 62%; }
+  .bubble:nth-child(7) { --translateY: -24px; --translateX: 100%; --rotate: -20deg; --scale: 0.67; --initial-rotate: -5deg; animation-duration: 5s; animation-delay: 0.2s; left: 40%; bottom: 23%; }
+  .bubble:nth-child(8) { --translateY: -56px; --translateX: -150%; --rotate: 25deg; --scale: 1.08; --initial-rotate: 15deg; animation-duration: 7s; animation-delay: 0.4s; left: 20%; bottom: 78%; }
+  .bubble:nth-child(9) { --translateY: -52px; --translateX: 50%; --rotate: 5deg; --scale: 0.49; --initial-rotate: -5deg; animation-duration: 8s; animation-delay: 0.6s; left: 80%; bottom: 42%; }
+  .bubble:nth-child(10) { --translateY: -30px; --translateX: -100%; --rotate: 10deg; --scale: 0.95; --initial-rotate: 0deg; animation-duration: 9s; animation-delay: 0.8s; left: 25%; bottom: 54%; }
+  /* ... simplified sampling for brevity while maintaining density ... */
+  .bubble:nth-child(odd) { animation-duration: 7s; }
+  .bubble:nth-child(even) { animation-duration: 9s; }
+  /* Random distribution emulation for remaining bubbles to avoid 500 lines of CSS */
+  .bubble:nth-child(11) { left: 10%; bottom: 20%; animation-delay: 1s; --translateX: 30%; --translateY: -40px; }
+  .bubble:nth-child(12) { left: 20%; bottom: 80%; animation-delay: 2s; --translateX: -20%; --translateY: -60px; }
+  .bubble:nth-child(13) { left: 30%; bottom: 40%; animation-delay: 3s; --translateX: 10%; --translateY: -30px; }
+  .bubble:nth-child(14) { left: 40%; bottom: 60%; animation-delay: 1.5s; --translateX: -40%; --translateY: -50px; }
+  .bubble:nth-child(15) { left: 50%; bottom: 10%; animation-delay: 4.5s; --translateX: 20%; --translateY: -20px; }
+  .bubble:nth-child(16) { left: 60%; bottom: 90%; animation-delay: 2.2s; --translateX: -10%; --translateY: -70px; }
+  .bubble:nth-child(17) { left: 70%; bottom: 30%; animation-delay: 0.5s; --translateX: 50%; --translateY: -40px; }
+  .bubble:nth-child(18) { left: 80%; bottom: 70%; animation-delay: 3.5s; --translateX: -30%; --translateY: -50px; }
+  .bubble:nth-child(19) { left: 90%; bottom: 50%; animation-delay: 1.2s; --translateX: 40%; --translateY: -60px; }
+  .bubble:nth-child(20) { left: 15%; bottom: 35%; animation-delay: 5s; --translateX: -50%; --translateY: -30px; }
