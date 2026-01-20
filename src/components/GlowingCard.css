@@ -15,6 +15,7 @@
     /* This will be masked */
     opacity: var(--active, 0);
     transition: opacity 0.3s ease;
+    filter: drop-shadow(0 0 30px var(--glow-color, transparent));
   }
   
   /* The glow element itself */
@@ -24,7 +25,7 @@
     inset: -2px; /* Spread */
     border-radius: inherit;
     padding: 2px; /* Border width */
-    background: var(--gradient);
+    background: var(--custom-gradient, var(--gradient));
     background-attachment: fixed; /* Critical for the effect */
     
     /* Reveal mask logic */
@@ -56,5 +57,7 @@
     overflow: hidden;
     backdrop-filter: blur(10px);
     /* Border is handled by the container/glow, but we can keep a subtle inner border if needed */
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    /* Border is handled by the container/glow, but we can keep a subtle inner border if needed */
+    border: 1px solid var(--base-glow, rgba(255, 255, 255, 0.05));
+    box-shadow: 0 0 20px -5px var(--base-glow, transparent);
   }

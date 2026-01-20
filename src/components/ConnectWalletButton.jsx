@@ -1,50 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
+import React, { useState } from 'react';
+import { useWallet } from '../contexts/WalletContext';
 
 const ConnectWalletButton = () => {
-  const [account, setAccount] = useState(null);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const { account, connectWallet, disconnectWallet, isConnecting } = useWallet();
   const [isHovered, setIsHovered] = useState(false);
 
-  useEffect(() => {
-    checkIfWalletIsConnected();
-  }, []);
-
-  const checkIfWalletIsConnected = async () => {
-    try {
-      const { ethereum } = window;
-      if (!ethereum) return;
-
-      const accounts = await ethereum.request({ method: 'eth_accounts' });
-      if (accounts.length > 0) {
-        setAccount(accounts[0]);
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const connectWallet = async () => {
-    try {
-      const { ethereum } = window;
-      if (!ethereum) {
-        alert("Get MetaMask!");
-        return;
-      }
-
-      setIsConnecting(true);
-      const accounts = await ethereum.request({ method: "eth_requestAccounts" });
-      setAccount(accounts[0]);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  const disconnectWallet = () => {
-    setAccount(null);
-    setIsHovered(false);
+  const handleDisconnect = (e) => {
+      e.stopPropagation();
+      disconnectWallet();
+      setIsHovered(false);
   };
 
   const formatAddress = (addr) => {
@@ -53,7 +17,7 @@ const ConnectWalletButton = () => {
 
   return (
     <button 
-      onClick={account ? disconnectWallet : connectWallet}
+      onClick={account ? handleDisconnect : connectWallet}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{

@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChevronDown } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import ConnectWalletButton from './ConnectWalletButton';
 
 const Navbar = () => {
@@ -22,7 +23,8 @@ const Navbar = () => {
       </div>
 
       <div style={{ display: 'flex', gap: '2.5rem', alignItems: 'center', fontSize: '0.9rem', fontWeight: 500 }} className="desktop-menu">
-        <a href="#" className="nav-link" style={{ textDecoration: 'none', color: 'var(--text-color)' }}>Our Programs</a>
+        <Link to="/" className="nav-link" style={{ textDecoration: 'none', color: 'var(--text-color)' }}>Home</Link>
+        <Link to="/swap" className="nav-link" style={{ textDecoration: 'none', color: 'var(--text-color)' }}>Swap</Link>
         <a href="#" className="nav-link" style={{ textDecoration: 'none', color: 'var(--text-color)' }}>Portfolio</a>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text-color)'}}>
           Our Ecosystem <ChevronDown size={14} />

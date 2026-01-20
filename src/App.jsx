@@ -1,28 +1,27 @@
 import React from 'react';
-import Navbar from './components/Navbar';
-import Hero from './components/Hero';
-import Features from './components/Features';
-import Footer from './components/Footer';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Home from './pages/Home';
+import SwapPage from './pages/SwapPage';
 import SmoothScroll from './components/SmoothScroll';
 import Preloader from './components/Preloader';
-import FloatingBubbles from './components/FloatingBubbles';
 import './App.css';
+
+// Placeholder for SwapPage (will be created next)
+// const SwapPage = () => <div style={{ color: 'white', padding: '100px' }}>Swap Page Loading...</div>; 
 
 function App() {
   return (
-    <SmoothScroll>
-      <Preloader />
-      <div className="app-container">
-        <FloatingBubbles />
-        {/* Content Layer */}
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <Navbar />
-          <Hero />
-          <Features />
-          <Footer />
+    <Router>
+      <SmoothScroll>
+        <Preloader />
+        <div className="app-container">
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/swap" element={<SwapPage />} />
+            </Routes>
         </div>
-      </div>
-    </SmoothScroll>
+      </SmoothScroll>
+    </Router>
   );
 }
 

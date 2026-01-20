@@ -11,6 +11,8 @@ export const GlowingCard = ({
     spread = 80,
     movementDuration = 2,
     inactiveZone = 0.01,
+    gradient = null, // Optional custom gradient
+    glowColor = null, // Optional custom glow color (for drop-shadow)
 }) => {
     const containerRef = useRef(null);
     const borderRef = useRef(null);
@@ -46,7 +48,7 @@ export const GlowingCard = ({
           const inactiveRadius = 0.5 * Math.min(width, height) * inactiveZone;
 
           if (distanceFromCenter < inactiveRadius) {
-            borderEl.style.setProperty("--active", "0");
+            borderEl.style.setProperty("--active", "0.3");
             return;
           }
 
@@ -56,9 +58,27 @@ export const GlowingCard = ({
             mouseY > top - proximity &&
             mouseY < top + height + proximity;
 
-          borderEl.style.setProperty("--active", isActive ? "1" : "0");
+          if (gradient) {
+            borderEl.style.setProperty("--custom-gradient", gradient);
+          }
 
-          if (!isActive) return;
+          if (glowColor) {
+              borderEl.style.setProperty("--glow-color", glowColor);
+              // Also update the content's static border/shadow if possible, 
+              // but we need a ref to content or use CSS variable on container
+              containerRef.current.style.setProperty("--base-glow", glowColor);
+          }
+          
+          
+          // Always keep a subtle glow (0.3) instead of turning off completely
+          borderEl.style.setProperty("--active", isActive ? "1" : "0.3");
+          
+          // Allow animation to continue even if "inactive" (low opacity) so it doesn't freeze
+          if (!isActive) {
+               // Optional: Auto-rotate or just return? 
+               // For now, let's let it just be static or follow last known position
+               // return; 
+          }
 
           const currentAngle = parseFloat(borderEl.style.getPropertyValue("--start")) || 0;
           
