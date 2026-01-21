@@ -114,7 +114,9 @@ export const useAggregator = () => {
             const zeroXSellToken = formatTokenFor0x(sellToken);
             const zeroXBuyToken = formatTokenFor0x(buyToken);
             
-            const zeroXUrl = `${zeroXBaseUrl}/swap/v1/quote?sellToken=${zeroXSellToken}&buyToken=${zeroXBuyToken}&sellAmount=${amount}${zeroXTakerAddress ? `&takerAddress=${zeroXTakerAddress}` : ''}&skipValidation=true`;
+            // FIX: REMOVED takerAddress to get public market quotes (avoids "Insufficient Funds" errors)
+            // We only ask for the price route, not a personalized transaction yet
+            const zeroXUrl = `${zeroXBaseUrl}/swap/v1/quote?sellToken=${zeroXSellToken}&buyToken=${zeroXBuyToken}&sellAmount=${amount}&skipValidation=true`;
             console.log("0x Requesting:", zeroXUrl);
 
             const zeroXPromise = fetch(zeroXUrl, {

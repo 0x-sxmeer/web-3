@@ -11,6 +11,18 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/0x/, '')
       },
+      // Proxy for Polygon 0x
+      '/api/polygon.0x': {
+        target: 'https://polygon.api.0x.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/polygon.0x/, '')
+      },
+      // Proxy for BSC 0x
+      '/api/bsc.0x': {
+        target: 'https://bsc.api.0x.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/bsc.0x/, '')
+      },
       '/api/1inch': {
         target: 'https://api.1inch.dev',
         changeOrigin: true,
