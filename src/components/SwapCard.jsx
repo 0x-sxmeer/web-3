@@ -9,6 +9,7 @@ import { ethers } from 'ethers';
 const SwapCard = () => {
     const { account, balance, connectWallet, signer } = useWallet();
     
+    // Default chains (Ethereum Mainnet)
     const [fromChain, setFromChain] = useState(1);
     const [toChain, setToChain] = useState(1);
 
@@ -31,6 +32,7 @@ const SwapCard = () => {
 
     const { getQuotes, bestQuote, isLoading, error } = useAggregator();
 
+    // Fetch quotes
     useEffect(() => {
         const timer = setTimeout(() => {
             if (!fromAmount || parseFloat(fromAmount) === 0) return;
@@ -44,11 +46,12 @@ const SwapCard = () => {
                     fromChain: fromChain,
                     toChain: toChain
                 });
-            } catch (e) { }
+            } catch (e) {}
         }, 600);
         return () => clearTimeout(timer);
     }, [fromAmount, sellToken, buyToken, account, fromChain, toChain]);
 
+    // Update UI
     useEffect(() => {
         if (bestQuote) {
             const formatted = ethers.formatUnits(bestQuote.output, bestQuote.outputDecimals);
@@ -66,7 +69,7 @@ const SwapCard = () => {
             setSwapStatus('initiating');
             let activeSigner = signer;
             
-            // 1. Network Check
+            // 1. Force Chain Switch
             const currentChain = Number((await signer.provider.getNetwork()).chainId);
             if (currentChain !== fromChain) {
                 try {
@@ -76,17 +79,15 @@ const SwapCard = () => {
                     });
                     const newProvider = new ethers.BrowserProvider(window.ethereum);
                     activeSigner = await newProvider.getSigner();
-                } catch (switchError) {
-                    alert("Please switch your wallet network.");
+                } catch (e) {
+                    alert("Please switch network.");
                     setSwapStatus('idle');
                     return;
                 }
             }
 
-            // 2. Approval
-            const isNative = sellToken.address === '0x0000000000000000000000000000000000000000' || 
-                             sellToken.address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
-
+            // 2. Approve Token (if not ETH)
+            const isNative = sellToken.address === '0x0000000000000000000000000000000000000000';
             if (bestQuote.approvalAddress && !isNative) {
                 const tokenContract = new ethers.Contract(
                     sellToken.address, 
@@ -94,40 +95,40 @@ const SwapCard = () => {
                     activeSigner
                 );
                 const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals);
-                const currentAllowance = await tokenContract.allowance(account, bestQuote.approvalAddress);
-
-                if (currentAllowance < amountWei) {
+                const allowance = await tokenContract.allowance(account, bestQuote.approvalAddress);
+                
+                if (allowance < amountWei) {
                     setSwapStatus('approving');
                     const tx = await tokenContract.approve(bestQuote.approvalAddress, amountWei);
                     await tx.wait();
                 }
             }
 
-            // 3. Execution (With Safe Parsing)
+            // 3. Execute Transaction (Sanitized)
             setSwapStatus('swapping');
-
             const txData = bestQuote.transactionRequest;
-            
-            // Safe BigInt Conversion
+
+            // FIX: Ethers v6 throws if 'from' is present in signer.sendTransaction
+            // We strip 'from', 'gas', and 'gasLimit' to reconstruct them safely
+            const { from, gas, gasLimit, ...cleanTx } = txData;
+
+            // Safe BigInt Parsing
             const val = txData.value ? BigInt(txData.value) : 0n;
             
-            // Safe Gas Limit with Fallback
-            let gasLimit = 500000n; // Safe default
-            if (txData.gasLimit) {
-                gasLimit = BigInt(txData.gasLimit);
-            } else if (txData.gas) {
-                gasLimit = BigInt(txData.gas);
+            // Gas Limit with Buffer
+            let limit = 500000n; // Fallback
+            const apiGas = gasLimit || gas;
+            if (apiGas) {
+                limit = (BigInt(apiGas) * 125n) / 100n; // +25% buffer
             }
 
-            const txRequest = {
-                to: txData.to,
-                data: txData.data,
+            const finalTx = {
+                ...cleanTx,
                 value: val,
-                from: account,
-                gasLimit: (gasLimit * 120n) / 100n // 20% Buffer
+                gasLimit: limit
             };
 
-            const tx = await activeSigner.sendTransaction(txRequest);
+            const tx = await activeSigner.sendTransaction(finalTx);
             await tx.wait();
             
             setSwapStatus('idle');
@@ -136,8 +137,8 @@ const SwapCard = () => {
 
         } catch (err) {
             setSwapStatus('idle');
-            // Extract the most meaningful error message
-            const msg = err.info?.error?.message || err.shortMessage || err.message || "Unknown error";
+            // Extract readable error
+            const msg = err.info?.error?.message || err.shortMessage || err.message;
             alert(`Transaction Failed: ${msg}`);
         }
     };
@@ -150,45 +151,25 @@ const SwapCard = () => {
                         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 600 }}>Swap</h2>
                     </div>
 
-                    {/* From Token */}
                     <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '1rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                             <span>You pay</span>
                             <span>Balance: {balance}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <input 
-                                type="number" 
-                                value={fromAmount}
-                                onChange={(e) => setFromAmount(e.target.value)}
-                                style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '2rem', fontFamily: 'var(--font-display)', width: '60%', outline: 'none' }} 
-                            />
+                            <input type="number" value={fromAmount} onChange={(e) => setFromAmount(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '2rem', width: '60%', outline: 'none' }} />
                             <TokenSelector selectedToken={sellToken} onSelect={setSellToken} chainId={fromChain} />
                         </div>
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'center', margin: '-1rem 0', zIndex: 10 }}>
-                        <div style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '0.8rem', padding: '0.5rem' }}>
-                            <ArrowDown size={20} color="var(--text-muted)" />
-                        </div>
+                        <div style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '0.8rem', padding: '0.5rem' }}><ArrowDown size={20} color="var(--text-muted)" /></div>
                     </div>
 
-                    {/* To Token */}
                     <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '1rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                            <span>You receive</span>
-                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}><span>You receive</span></div>
                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                             {isLoading ? (
-                                <Loader2 className="animate-spin" color="#ff7120" />
-                            ) : (
-                                <input 
-                                    type="number" 
-                                    value={toAmount}
-                                    readOnly
-                                    style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '2rem', fontFamily: 'var(--font-display)', width: '60%', outline: 'none' }} 
-                                />
-                            )}
+                             {isLoading ? <Loader2 className="animate-spin" color="#ff7120" /> : <input type="number" value={toAmount} readOnly style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '2rem', width: '60%', outline: 'none' }} />}
                             <TokenSelector selectedToken={buyToken} onSelect={setBuyToken} chainId={toChain} />
                         </div>
                     </div>
@@ -196,36 +177,19 @@ const SwapCard = () => {
                     {bestQuote && (
                         <div style={{ padding: '1rem', background: 'rgba(255,113,32,0.1)', borderRadius: '0.8rem', border: '1px solid rgba(255,113,32,0.3)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px' }}>
-                                <span style={{display:'flex', alignItems:'center', gap:'6px'}}>
-                                    <Zap size={14} fill="currentColor" />
-                                    via <b>{bestQuote.provider}</b>
-                                </span>
+                                <span style={{display:'flex', alignItems:'center', gap:'6px'}}><Zap size={14} fill="currentColor" /> via <b>{bestQuote.provider}</b></span>
                                 <span style={{ fontWeight: 'bold', color: '#ff7120' }}>Best Return</span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                                 <span style={{display:'flex', alignItems:'center', gap:'4px'}}><Fuel size={12}/> Est. Gas</span>
-                                <span>${bestQuote.gasCostUsd.toFixed(2)}</span>
+                                <span>${Number(bestQuote.gasCostUsd || 0).toFixed(2)}</span>
                             </div>
                         </div>
                     )}
                     
-                    {error && (
-                        <div style={{ padding: '1rem', background: 'rgba(255,0,0,0.1)', borderRadius: '0.8rem', color: '#ff4d4d', fontSize: '0.9rem', textAlign: 'center' }}>
-                            {error}
-                        </div>
-                    )}
+                    {error && <div style={{ padding: '1rem', background: 'rgba(255,0,0,0.1)', borderRadius: '0.8rem', color: '#ff4d4d', textAlign: 'center' }}>{error}</div>}
 
-                    <button 
-                        onClick={executeSwap}
-                        disabled={isLoading || swapStatus !== 'idle' || !bestQuote}
-                        style={{
-                            width: '100%',
-                            background: (swapStatus !== 'idle' || !bestQuote) ? '#333' : 'var(--accent-color)',
-                            border: 'none', padding: '1.2rem', borderRadius: '1rem',
-                            color: 'white', fontWeight: 700, fontSize: '1rem', fontFamily: 'var(--font-display)',
-                            cursor: (swapStatus !== 'idle' || !bestQuote) ? 'not-allowed' : 'pointer',
-                            opacity: (swapStatus !== 'idle' || !bestQuote) ? 0.7 : 1
-                        }}>
+                    <button onClick={executeSwap} disabled={isLoading || swapStatus !== 'idle' || !bestQuote} style={{ width: '100%', background: (swapStatus !== 'idle' || !bestQuote) ? '#333' : 'var(--accent-color)', border: 'none', padding: '1.2rem', borderRadius: '1rem', color: 'white', fontWeight: 700, fontSize: '1rem', cursor: (swapStatus !== 'idle' || !bestQuote) ? 'not-allowed' : 'pointer', opacity: (swapStatus !== 'idle' || !bestQuote) ? 0.7 : 1 }}>
                          {swapStatus === 'idle' ? 'SWAP NOW' : swapStatus.toUpperCase() + '...'}
                     </button>
                 </div>
