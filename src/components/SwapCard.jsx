@@ -172,6 +172,7 @@ const SwapCard = () => {
             return;
         }
         
+        
         // 1. SAFETY CHECK: Ensure we are on the correct chain
         try {
             const network = await signer.provider.getNetwork();
@@ -181,14 +182,40 @@ const SwapCard = () => {
             console.log("Network Check:", { currentChainId, expectedChainId });
             
             if (currentChainId !== expectedChainId) {
-                alert(`Wrong Network!\n\nYour wallet is on chain ${currentChainId}, but the quote is for chain ${expectedChainId}.\n\nPlease switch your wallet to the correct network.`);
-                return;
+                console.log("⚠️ Network mismatch detected. Attempting auto-switch...");
+                
+                // Convert chainId to hex format for wallet_switchEthereumChain
+                const chainIdHex = '0x' + expectedChainId.toString(16);
+                
+                try {
+                    // Attempt to switch network automatically
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: chainIdHex }],
+                    });
+                    
+                    console.log("✅ Network switched successfully!");
+                    alert(`Network switched to ${networkName}!\n\nPlease click "SWAP NOW" again to execute the swap.`);
+                    return; // User needs to click swap again after network switch
+                    
+                } catch (switchError) {
+                    console.error("Network switch failed:", switchError);
+                    
+                    // If user rejected the switch or it failed
+                    if (switchError.code === 4001) {
+                        alert(`Network Switch Rejected\n\nYou need to be on ${networkName} (Chain ${expectedChainId}) to execute this swap.\n\nPlease switch networks manually in your wallet.`);
+                    } else {
+                        alert(`Failed to switch network automatically.\n\nPlease manually switch your wallet to ${networkName} (Chain ${expectedChainId}).`);
+                    }
+                    return;
+                }
             }
         } catch (networkError) {
             console.error("Network check failed:", networkError);
             alert("Failed to verify network. Please check your wallet connection.");
             return;
         }
+        
         
         setSwapStatus('initiating');
 
@@ -526,11 +553,11 @@ const SwapCard = () => {
 
                     <div style={{ marginTop: '1rem' }}>
                         <button 
-                            disabled={isLoading || swapStatus !== 'idle'}
+                            disabled={!account || isLoading || swapStatus !== 'idle' || (!selectedQuote && !mockMode)}
                             onClick={!account ? connectWallet : executeSwap}
                             style={{
                             width: '100%',
-                            background: (isLoading || swapStatus !== 'idle') ? '#333' : 'var(--accent-color)',
+                            background: (isLoading || swapStatus !== 'idle' || (!selectedQuote && !mockMode)) ? '#333' : 'var(--accent-color)',
                             border: 'none',
                             padding: '1.2rem',
                             borderRadius: '1rem',
@@ -538,11 +565,13 @@ const SwapCard = () => {
                             fontWeight: 700,
                             fontSize: '1rem',
                             fontFamily: 'var(--font-display)',
-                            cursor: (!account || isLoading || swapStatus !== 'idle') ? 'not-allowed' : 'pointer',
+                            cursor: (!account || isLoading || swapStatus !== 'idle' || (!selectedQuote && !mockMode)) ? 'not-allowed' : 'pointer',
                             transition: 'all 0.2s',
-                            opacity: (!account || isLoading || swapStatus !== 'idle') ? 0.7 : 1
+                            opacity: (!account || isLoading || swapStatus !== 'idle' || (!selectedQuote && !mockMode)) ? 0.7 : 1
                         }}>
                              {!account ? 'CONNECT WALLET' : 
+                                isLoading ? 'FETCHING QUOTES...' :
+                                !selectedQuote && !mockMode ? 'WAITING FOR QUOTE...' :
                                 swapStatus === 'initiating' ? 'INITIATING...' :
                                 swapStatus === 'approving' ? 'APPROVING...' :
                                 swapStatus === 'swapping' ? 'SWAPPING...' :
