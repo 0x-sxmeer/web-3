@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GlowingCard } from './GlowingCard';
-import { ChevronDown, ArrowDown, Wallet, Loader2, RefreshCw, Zap, Fuel } from 'lucide-react';
+import { ChevronDown, ArrowDown, Wallet, Loader2 } from 'lucide-react';
 import { useAggregator } from '../hooks/useAggregator';
-import { TOKENS } from '../services/web3Service';
 import { ethers } from 'ethers';
 import { useWallet } from '../contexts/WalletContext';
-import { getTokensForNetwork } from '../services/tokenLists';
-
+import { TOKENS } from '../services/web3Service'; 
 import TokenSelector from './TokenSelector';
 
 const SwapCard = () => {
@@ -14,35 +12,80 @@ const SwapCard = () => {
     const { account, balance, connectWallet, signer, chainId, networkName } = useWallet();
     const [mockMode, setMockMode] = useState(false);
     
+    // Manual Target Chain State
+    const [targetChain, setTargetChain] = useState(1); 
+
+    // Sync targetChain with wallet IF connected to a supported chain
+    useEffect(() => {
+        if (chainId) {
+            const supported = [1, 56, 137];
+            if (supported.includes(Number(chainId))) {
+                setTargetChain(Number(chainId));
+            }
+        }
+    }, [chainId]);
+
     // Token State
-    const [sellToken, setSellToken] = useState({ 
-        symbol: 'ETH', 
-        address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 
-        decimals: 18,
-        logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png' 
-    });
-    const [buyToken, setBuyToken] = useState({ 
-        symbol: 'USDC', 
-        address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', 
-        decimals: 6,
-        logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' 
-    });
+    const [sellToken, setSellToken] = useState(null);
+    const [buyToken, setBuyToken] = useState(null);
+
+    // Set default tokens based on chain
+    useEffect(() => {
+        if (targetChain === 56) { // BSC Defaults
+            setSellToken({ symbol: 'BNB', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', decimals: 18, logo: 'https://cryptologos.cc/logos/bnb-bnb-logo.png' });
+            setBuyToken({ symbol: 'USDT', address: '0x55d398326f99059ff775485246999027b3197955', decimals: 18, logo: 'https://cryptologos.cc/logos/tether-usdt-logo.png' });
+        } else if (targetChain === 137) { // Polygon Defaults
+            setSellToken({ symbol: 'MATIC', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', decimals: 18, logo: 'https://cryptologos.cc/logos/polygon-matic-logo.png' });
+            setBuyToken({ symbol: 'USDC', address: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359', decimals: 6, logo: 'https://cryptologos.cc/logos/usd-coin-usdc-logo.png' });
+        } else { // ETH Defaults
+            setSellToken({ symbol: 'ETH', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', decimals: 18, logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png' });
+            setBuyToken({ symbol: 'USDC', address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6, logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' });
+        }
+    }, [targetChain]);
 
     const [fromAmount, setFromAmount] = useState('1');
     const [toAmount, setToAmount] = useState('0.00');
     
     // Config State
-    const [gasSpeed, setGasSpeed] = useState('standard'); 
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [timeLeft, setTimeLeft] = useState(15);
     
     // Aggregator Hook
     const { getQuotes, bestQuote, quotes, isLoading, error } = useAggregator();
 
-    // Refresh Timer Logic
+    // Fetch Quotes Logic
+    const handleFetchQuotes = () => {
+        if (!fromAmount || parseFloat(fromAmount) === 0 || !sellToken || !buyToken) return;
+        
+        try {
+            const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals).toString();
+            console.log(`Fetching quotes for Chain ${targetChain}...`);
+            
+            getQuotes({
+                sellToken: sellToken.address, 
+                buyToken: buyToken.address, 
+                amount: amountWei,
+                userAddress: account || '0x0000000000000000000000000000000000000000',
+                buyTokenDecimals: buyToken.decimals,
+                chainId: targetChain
+            });
+        } catch (e) {
+            console.error("Quote fetch error", e);
+        }
+    };
+
+    // Trigger fetch on input change
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            handleFetchQuotes();
+            setTimeLeft(15);
+        }, 600);
+        return () => clearTimeout(timer);
+    }, [fromAmount, sellToken, buyToken, targetChain, account]);
+
+    // Refresh Timer
     useEffect(() => {
         if (!autoRefresh) return;
-        
         const timer = setInterval(() => {
             setTimeLeft((prev) => {
                 if (prev <= 1) {
@@ -52,369 +95,254 @@ const SwapCard = () => {
                 return prev - 1;
             });
         }, 1000);
-
         return () => clearInterval(timer);
-    }, [autoRefresh, fromAmount, sellToken, buyToken]); // Add token deps
+    }, [autoRefresh, fromAmount, sellToken, buyToken, targetChain]);
 
-    // Fetch Quotes Wrapper
-    const handleFetchQuotes = () => {
-        if (!fromAmount || parseFloat(fromAmount) === 0) return;
-        
-        // FORCE ETHEREUM MAINNET (Chain ID 1)
-        const TARGET_CHAIN_ID = 1;
-        
-        try {
-            const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals).toString();
-            console.log("Fetching quotes for:", amountWei, "on chain:", TARGET_CHAIN_ID);
-            
-            getQuotes({
-                sellToken: sellToken.address, 
-                buyToken: buyToken.address, 
-                amount: amountWei,
-                userAddress: account || '0x0000000000000000000000000000000000000000',
-                buyTokenDecimals: buyToken.decimals,
-                chainId: TARGET_CHAIN_ID // ALWAYS use Ethereum Mainnet
-            });
-        } catch (e) {
-            console.error("Invalid amount", e);
-        }
-    };
 
-    // Trigger fetch on amount change (debounced) or when account connects
-    useEffect(() => {
-        const timeoutId = setTimeout(() => {
-            handleFetchQuotes();
-            setTimeLeft(15); // Reset timer
-        }, 600);
-        return () => clearTimeout(timeoutId);
-    }, [fromAmount, sellToken, buyToken, account]); // Added account dependency
-    
     // UI Selection State
     const [selectedQuote, setSelectedQuote] = useState(null);
 
-    // Auto-select the best quote when quotes update
-    // Auto-select logic with sticky manual selection
+    // Auto-select best quote
     useEffect(() => {
         if (quotes.length > 0 && bestQuote) {
             if (selectedQuote) {
-                // Try to keep the same provider if available in new quotes
                 const matching = quotes.find(q => q.provider === selectedQuote.provider);
-                if (matching) {
-                    setSelectedQuote(matching);
-                } else {
-                    // Fallback to best if provider no longer available
-                    setSelectedQuote(bestQuote);
-                }
+                if (matching) setSelectedQuote(matching);
+                else setSelectedQuote(bestQuote);
             } else {
-                // Initial selection
                 setSelectedQuote(bestQuote);
             }
         }
     }, [quotes, bestQuote, selectedQuote]);
 
-    // Reset selection on major input changes to allow "Best" to win again
+    // Output Display
     useEffect(() => {
-        setSelectedQuote(null);
-    }, [fromAmount, sellToken, buyToken]);
-
-    // Update ToAmount when SELECTED quote changes
-    useEffect(() => {
-        if (selectedQuote) {
-            // Use dynamic decimals
+        if (selectedQuote && buyToken) {
             const formatted = ethers.formatUnits(selectedQuote.output, buyToken.decimals);
             setToAmount(parseFloat(formatted).toFixed(4));
         }
     }, [selectedQuote, buyToken]); 
 
+    const [swapStatus, setSwapStatus] = useState('idle');
 
-    const [swapStatus, setSwapStatus] = useState('idle'); // idle, approving, swapping, success
-
-    // Minimal ERC20 ABI for Approvals
+    // ERC20 ABI
     const ERC20_ABI = [
         "function allowance(address owner, address spender) view returns (uint256)",
         "function approve(address spender, uint256 amount) returns (bool)"
     ];
 
+    // --- ROBUST EXECUTION LOGIC ---
     const executeSwap = async () => {
-        console.log("=== SWAP BUTTON CLICKED ===");
-        console.log("Account:", account);
-        console.log("Selected Quote:", selectedQuote);
-        console.log("Signer:", signer);
-        console.log("Mock Mode:", mockMode);
-        
         if (!account) {
-            console.error("❌ Swap blocked: No account connected");
-            alert("Please connect your wallet first!");
+            connectWallet();
             return;
         }
-        
-        if (!selectedQuote) {
-            console.error("❌ Swap blocked: No quote selected");
-            alert("No quote available. Please wait for quotes to load.");
-            return;
-        }
-        
-        if (!signer && !mockMode) {
-            console.error("❌ Swap blocked: No signer available");
-            alert("Wallet not properly connected. Please reconnect your wallet.");
-            return;
-        }
-        
-        // MOCK MODE: Simulate swap without real transaction
-        if (mockMode) {
-            console.log("🎭 MOCK MODE: Simulating swap...");
-            setSwapStatus('initiating');
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            setSwapStatus('swapping');
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            setSwapStatus('success');
-            alert(`✅ Mock Swap Completed!\n\nSwapped ${fromAmount} ${sellToken.symbol} for ~${toAmount} ${buyToken.symbol}\n\n(This was a simulated transaction)`);
-            setSwapStatus('idle');
-            return;
-        }
-        
-        
-        // 1. SAFETY CHECK: Ensure we are on the correct chain
-        // FORCE ETHEREUM MAINNET (Chain ID 1)
-        const TARGET_CHAIN_ID = 1;
-        
-        try {
-            const network = await signer.provider.getNetwork();
-            const currentChainId = Number(network.chainId);
-            
-            console.log("Network Check:", { currentChainId, requiredChainId: TARGET_CHAIN_ID });
-            
-            if (currentChainId !== TARGET_CHAIN_ID) {
-                console.log("⚠️ Network mismatch detected. Attempting auto-switch to Ethereum Mainnet...");
-                
-                // Convert chainId to hex format for wallet_switchEthereumChain
-                const chainIdHex = '0x' + TARGET_CHAIN_ID.toString(16); // 0x1 for Ethereum
-                
-                try {
-                    // Attempt to switch network automatically
-                    await window.ethereum.request({
-                        method: 'wallet_switchEthereumChain',
-                        params: [{ chainId: chainIdHex }],
-                    });
-                    
-                    console.log("✅ Network switched successfully to Ethereum Mainnet!");
-                    alert(`Network switched to Ethereum Mainnet!\n\nPlease click "SWAP NOW" again to execute the swap.`);
-                    return; // User needs to click swap again after network switch
-                    
-                } catch (switchError) {
-                    console.error("Network switch failed:", switchError);
-                    
-                    // If user rejected the switch or it failed
-                    if (switchError.code === 4001) {
-                        alert(`Network Switch Rejected\n\nYou need to be on Ethereum Mainnet (Chain 1) to execute this swap.\n\nPlease switch networks manually in your wallet.`);
-                    } else {
-                        alert(`Failed to switch network automatically.\n\nPlease manually switch your wallet to Ethereum Mainnet (Chain 1).`);
-                    }
-                    return;
-                }
+        if (!selectedQuote || !signer) return;
+
+        // 1. NETWORK CHECK (Enforce targetChain)
+        const currentChainId = Number((await signer.provider.getNetwork()).chainId);
+        if (currentChainId !== targetChain) {
+            try {
+                const hexChain = '0x' + targetChain.toString(16);
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: hexChain }],
+                });
+                // Wait for switch
+                await new Promise(r => setTimeout(r, 1000));
+                // Double check
+                const newChain = Number((await signer.provider.getNetwork()).chainId);
+                if (newChain !== targetChain) return; 
+            } catch (e) {
+                alert("Please switch network in your wallet manually to " + (targetChain===56?'BSC':(targetChain===137?'Polygon':'Ethereum')));
+                return;
             }
-        } catch (networkError) {
-            console.error("Network check failed:", networkError);
-            alert("Failed to verify network. Please check your wallet connection.");
-            return;
         }
-        
-        
+
         setSwapStatus('initiating');
 
         try {
-            const userAddress = account;
-            
-            // Use selectedQuote for execution
-            const quoteToExecute = selectedQuote;
-            console.log("Executing Quote:", quoteToExecute);
-
-            // 2. APPROVAL CHECK (If selling ERC20)
-            if (sellToken.symbol !== 'ETH') {
-                // Determine Spender
-                let spender = null;
-                if (quoteToExecute.provider === '0x') {
-                    // 0x usually provides allowanceTarget
-                    spender = quoteToExecute.data.allowanceTarget || quoteToExecute.data.to; 
-                } else if (quoteToExecute.provider === '1inch') {
-                    // 1inch swap response puts router in tx.to
-                    spender = quoteToExecute.data.tx?.to;
-                }
-
-                if (!spender) {
-                    throw new Error(`Could not determine approval spender for ${quoteToExecute.provider}`);
-                }
-
-                const tokenContract = new ethers.Contract(sellToken.address, ERC20_ABI, signer);
-                const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals);
-                
-                // Check Allowance
-                const allowance = await tokenContract.allowance(userAddress, spender);
-                
-                if (allowance < amountWei) {
-                    setSwapStatus('approving');
-                    const approveTx = await tokenContract.approve(spender, amountWei);
-                    await approveTx.wait();
-                }
-            }
-
-            // 3. EXECUTE SWAP
-            setSwapStatus('swapping');
-            
             let txParams = {};
-            if (quoteToExecute.provider === '0x') {
+            const ONE_INCH_API_KEY = import.meta.env.VITE_1INCH_KEY;
+            const ZERO_X_API_KEY = import.meta.env.VITE_0X_KEY;
+
+            // --- 1INCH EXECUTION LOGIC ---
+            if (selectedQuote.provider === '1inch') {
+                console.log("🚀 Executing 1inch Swap...");
+                
+                // 1. Get Spender (Router)
+                const spenderRes = await fetch(`/api/1inch/swap/v6.0/${targetChain}/approve/spender`, {
+                    headers: { 'Authorization': `Bearer ${ONE_INCH_API_KEY}` }
+                });
+                const spenderData = await spenderRes.json();
+                const spender = spenderData.address;
+
+                // 2. Approve Token (If not native)
+                const isNative = sellToken.address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+                if (!isNative) {
+                    const tokenContract = new ethers.Contract(sellToken.address, ERC20_ABI, signer);
+                    const allowance = await tokenContract.allowance(account, spender);
+                    const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals);
+                    
+                    if (allowance < amountWei) {
+                        setSwapStatus('approving');
+                        console.log("Requesting Approval...");
+                        const tx = await tokenContract.approve(spender, amountWei);
+                        await tx.wait();
+                        console.log("Approved!");
+                    }
+                }
+
+                // 3. Get Swap Data
+                setSwapStatus('swapping');
+                const swapUrl = `/api/1inch/swap/v6.0/${targetChain}/swap?src=${sellToken.address}&dst=${buyToken.address}&amount=${ethers.parseUnits(fromAmount, sellToken.decimals).toString()}&from=${account}&slippage=1`;
+                const swapRes = await fetch(swapUrl, { headers: { 'Authorization': `Bearer ${ONE_INCH_API_KEY}` } });
+                
+                if (!swapRes.ok) {
+                    const err = await swapRes.json();
+                     throw new Error(err.description || "1inch Swap API Failed");
+                }
+                
+                const swapData = await swapRes.json();
+
                 txParams = {
-                    to: quoteToExecute.data.to,
-                    data: quoteToExecute.data.data,
-                    value: quoteToExecute.data.value || "0"
+                    to: swapData.tx.to,
+                    data: swapData.tx.data,
+                    value: swapData.tx.value
                 };
-            } else if (quoteToExecute.provider === '1inch') {
+            } 
+            
+            // --- 0X EXECUTION LOGIC ---
+            else if (selectedQuote.provider === '0x') {
+                console.log("🚀 Executing 0x Swap...");
+                setSwapStatus('swapping');
+                
+                // 0x Quote needs to be re-fetched with takerAddress for valid tx data
+                let zeroXBaseUrl = '/api/0x';
+                if (targetChain === 137) zeroXBaseUrl = '/api/polygon.0x';
+                else if (targetChain === 56) zeroXBaseUrl = '/api/bsc.0x';
+                
+                // Format symbols for 0x
+                const format0x = (addr) => addr.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' ? (targetChain===56?'BNB':(targetChain===137?'MATIC':'ETH')) : addr;
+                
+                const zSell = format0x(sellToken.address);
+                const zBuy = format0x(buyToken.address);
+                const amt = ethers.parseUnits(fromAmount, sellToken.decimals).toString();
+
+                const zUrl = `${zeroXBaseUrl}/swap/v1/quote?sellToken=${zSell}&buyToken=${zBuy}&sellAmount=${amt}&takerAddress=${account}&skipValidation=true`;
+                
+                const zRes = await fetch(zUrl, { headers: { '0x-api-key': ZERO_X_API_KEY } });
+                const zData = await zRes.json();
+                
+                if (!zRes.ok) throw new Error(zData.reason || "0x Swap Failed");
+
+                // Note: 0x typically handles approval in the `allowanceTarget` field.
+                // We should check it if provided.
+                if (zData.allowanceTarget) {
+                    const isNative = sellToken.address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+                    if (!isNative) {
+                         const tokenContract = new ethers.Contract(sellToken.address, ERC20_ABI, signer);
+                         const allowance = await tokenContract.allowance(account, zData.allowanceTarget);
+                         
+                         if (allowance < BigInt(amt)) {
+                             setSwapStatus('approving');
+                             const tx = await tokenContract.approve(zData.allowanceTarget, BigInt(amt));
+                             await tx.wait();
+                         }
+                    }
+                }
+
                 txParams = {
-                    to: quoteToExecute.data.tx.to,
-                    data: quoteToExecute.data.tx.data,
-                    value: quoteToExecute.data.tx.value || "0"
+                    to: zData.to,
+                    data: zData.data,
+                    value: zData.value
                 };
             }
 
-            if (!txParams.to || !txParams.data) {
-                throw new Error(`Invalid Transaction Params: to=${txParams.to}, data=${txParams.data ? 'present' : 'missing'}`);
-            }
-
-            // 4. GAS ESTIMATION (Critical for professional feel)
-            console.log("Estimating gas...");
-            try {
-                const estimatedGas = await signer.estimateGas(txParams);
-                // Add a 10% buffer to the gas limit to prevent "Out of Gas" errors
-                txParams.gasLimit = (estimatedGas * 110n) / 100n;
-                console.log("Gas estimated:", estimatedGas.toString(), "with buffer:", txParams.gasLimit.toString());
-            } catch (gasError) {
-                console.warn("⚠️ Gas estimation failed, transaction might revert", gasError);
-                // We proceed anyway but warn the user or set a high default
-                txParams.gasLimit = 300000n; // Safe default fallback
-                console.log("Using fallback gas limit:", txParams.gasLimit.toString());
-            }
-
-            console.log("Sending Transaction:", txParams);
+            console.log("Sending Transaction...", txParams);
             const tx = await signer.sendTransaction(txParams);
-            console.log("Transaction Sent:", tx);
+            console.log("Tx Hash:", tx.hash);
             await tx.wait();
-            console.log("Transaction Mined");
-
+            
             setSwapStatus('success');
-            alert(`Swap Completed! Tx Hash: ${tx.hash}`);
-            setSwapStatus('idle'); // Reset after success
-            handleFetchQuotes();   // Refresh quotes
+            alert(`Swap Successful!\nHash: ${tx.hash}`);
+            setSwapStatus('idle');
+            // Refresh quotes
+            handleFetchQuotes();
 
         } catch (err) {
-            console.error("Swap Error:", err);
+            console.error(err);
             setSwapStatus('idle');
-            // Extract meaningful error message
-            let msg = err.reason || err.message || "Unknown Error";
-            if (msg.includes("user rejected")) msg = "User rejected transaction";
-            alert("Swap Failed: " + msg);
+            alert("Swap Failed: " + (err.message || "Unknown error"));
         }
     };
+
+    if (!sellToken || !buyToken) return <div style={{padding:'2rem', textAlign:'center', color:'white'}}>Loading Tokens...</div>;
 
     return (
         <div style={{ maxWidth: '480px', width: '100%', margin: '0 auto' }}>
             <GlowingCard 
                 spread={80} 
-                inactiveZone={0.01} 
-                gradient="conic-gradient(from var(--start) at 50% 50%, transparent 0deg, #ff9f1c 20deg, #ff5e00 45deg, transparent 90deg)"
+                inactiveZone={0.01}
                 glowColor="#ff7120"
             >
                 <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                     
-                    {/* Header with Settings */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', flexDirection:'column', gap:'10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 600 }}>Swap</h2>
                             
-                            {/* Network Badge */}
-                            {chainId && (
-                                <div style={{
-                                    background: chainId === 11155111n ? 'rgba(255, 165, 0, 0.1)' : 'rgba(76, 175, 80, 0.1)',
-                                    border: `1px solid ${chainId === 11155111n ? 'rgba(255, 165, 0, 0.3)' : 'rgba(76, 175, 80, 0.3)'}`,
-                                    borderRadius: '4px',
-                                    padding: '2px 8px',
-                                    fontSize: '0.7rem',
-                                    fontWeight: 600,
-                                    color: chainId === 11155111n ? '#FFA500' : '#4CAF50'
-                                }}>
-                                    {networkName}
+                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div 
+                                    onClick={() => setMockMode(!mockMode)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+                                        padding: '4px 8px', borderRadius: '6px',
+                                        background: mockMode ? 'rgba(255, 165, 0, 0.1)' : 'transparent',
+                                        border: `1px solid ${mockMode ? 'rgba(255, 165, 0, 0.3)' : 'transparent'}`,
+                                    }}
+                                >
+                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: mockMode ? '#FFA500' : '#444' }}></div>
+                                    <span style={{ fontSize: '0.7rem', color: mockMode ? '#FFA500' : '#666' }}>{mockMode ? 'MOCK' : 'LIVE'}</span>
                                 </div>
-                            )}
-                            
-                            {/* Refresh Timer */}
-                            <div 
-                                onClick={() => { setAutoRefresh(!autoRefresh); handleFetchQuotes(); }}
-                                style={{ 
-                                    width: 24, height: 24, 
-                                    borderRadius: '50%', 
-                                    border: `2px solid ${autoRefresh ? 'var(--accent-color)' : '#444'}`,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontSize: '0.6rem',
-                                    fontWeight: 'bold',
-                                    color: autoRefresh ? 'var(--accent-color)' : '#666',
-                                    cursor: 'pointer',
-                                    position: 'relative'
-                                }}
-                            >
-                                {timeLeft}
+                                <div 
+                                    onClick={() => { setAutoRefresh(!autoRefresh); handleFetchQuotes(); }}
+                                    style={{ 
+                                        width: 24, height: 24, borderRadius: '50%', 
+                                        border: `2px solid ${autoRefresh ? 'var(--accent-color)' : '#444'}`,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: '0.6rem', fontWeight: 'bold', color: autoRefresh ? 'var(--accent-color)' : '#666',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    {timeLeft}
+                                </div>
                             </div>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            {/* Mock Mode Toggle */}
-                            <div 
-                                onClick={() => setMockMode(!mockMode)}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    cursor: 'pointer',
-                                    padding: '4px 8px',
-                                    borderRadius: '6px',
-                                    background: mockMode ? 'rgba(255, 165, 0, 0.1)' : 'transparent',
-                                    border: `1px solid ${mockMode ? 'rgba(255, 165, 0, 0.3)' : 'transparent'}`,
-                                    transition: 'all 0.2s'
-                                }}
-                                title="Mock mode simulates swaps without real transactions"
-                            >
-                                <div style={{
-                                    width: 10,
-                                    height: 10,
-                                    borderRadius: '50%',
-                                    background: mockMode ? '#FFA500' : '#444'
-                                }}></div>
-                                <span style={{ fontSize: '0.7rem', color: mockMode ? '#FFA500' : '#666' }}>
-                                    {mockMode ? 'MOCK' : 'LIVE'}
-                                </span>
-                            </div>
-
-                            {/* Gas Toggle */}
-                            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '20px', padding: '2px' }}>
-                                {['economy', 'standard', 'fast'].map((speed) => (
-                                    <button
-                                        key={speed}
-                                        onClick={() => setGasSpeed(speed)}
-                                        style={{
-                                            background: gasSpeed === speed ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                            border: 'none',
-                                            borderRadius: '16px',
-                                            padding: '4px 8px',
-                                            fontSize: '0.7rem',
-                                            color: gasSpeed === speed ? 'white' : '#888',
-                                            textTransform: 'capitalize'
-                                        }}
-                                    >
-                                        {speed === 'fast' && <Zap size={10} style={{marginRight:2}} fill="currentColor"/>}
-                                        {speed}
-                                    </button>
-                                ))}
-                            </div>
+                         {/* Network Selector */}
+                         <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '12px' }}>
+                            {[
+                                { id: 1, label: 'ETH' },
+                                { id: 56, label: 'BSC' },
+                                { id: 137, label: 'POL' }
+                            ].map(net => (
+                                <button
+                                    key={net.id}
+                                    onClick={() => setTargetChain(net.id)}
+                                    style={{
+                                        flex: 1,
+                                        background: targetChain === net.id ? 'var(--accent-color)' : 'transparent',
+                                        border: 'none', borderRadius: '8px', padding: '8px 12px',
+                                        color: targetChain === net.id ? 'white' : '#888',
+                                        fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    {net.label}
+                                </button>
+                            ))}
                         </div>
                     </div>
 
@@ -422,167 +350,102 @@ const SwapCard = () => {
                     <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '1rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                             <span>You pay</span>
-                            <span>Balance: {sellToken.symbol === 'ETH' ? (account ? balance : '---') : '---'}</span>
+                             <span>Balance: {sellToken.symbol === 'ETH' || sellToken.symbol === 'BNB' || sellToken.symbol === 'MATIC' ? (account ? balance : '---') : '---'}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <input 
                                 type="number" 
                                 value={fromAmount}
                                 onChange={(e) => setFromAmount(e.target.value)}
-                                placeholder="0"
-                                style={{ 
-                                    background: 'transparent', 
-                                    border: 'none', 
-                                    color: 'white', 
-                                    fontSize: '2rem', 
-                                    fontFamily: 'var(--font-display)', 
-                                    width: '60%',
-                                    outline: 'none'
-                                }} 
+                                style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '2rem', width: '60%', outline: 'none', fontFamily: 'var(--font-display)' }} 
                             />
-                            <TokenSelector selectedToken={sellToken} onSelect={setSellToken} />
+                            <TokenSelector selectedToken={sellToken} onSelect={setSellToken} chainId={targetChain} />
                         </div>
                     </div>
 
-                    {/* Arrow Divider */}
-                    <div style={{ display: 'flex', justifyContent: 'center', margin: '-1rem 0' }}>
-                        <div style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '0.8rem', padding: '0.5rem', cursor: 'pointer', zIndex: 10 }}>
-                            <ArrowDown size={20} color="var(--text-muted)" />
-                        </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', margin: '-1rem 0', zIndex: 10 }}>
+                        <div style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '0.8rem', padding: '0.5rem' }}><ArrowDown size={20} color="var(--text-muted)" /></div>
                     </div>
 
                     {/* To Input */}
                     <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '1rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                             <span>You receive</span>
-                            {selectedQuote && (
-                                <span style={{color: selectedQuote.isBest ? '#4CAF50' : 'var(--text-muted)', fontSize:'0.8rem'}}>
-                                    Via {selectedQuote.provider} {selectedQuote.isBest && '(Best)'}
-                                </span>
-                            )}
+                            {selectedQuote && <span style={{color:'#4CAF50', fontSize:'0.8rem'}}>Via {selectedQuote.provider}</span>}
                         </div>
-                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                             {isLoading ? (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            {isLoading ? (
                                 <div style={{ width: '60%', height: '38px', display: 'flex', alignItems: 'center' }}>
                                     <Loader2 className="animate-spin" color="#ff7120" />
                                 </div>
                             ) : (
                                 <input 
-                                    type="number" 
+                                    type="text" 
                                     value={toAmount}
                                     readOnly
-                                    style={{ 
-                                        background: 'transparent', 
-                                        border: 'none', 
-                                        color: 'white', 
-                                        fontSize: '2rem', 
-                                        fontFamily: 'var(--font-display)', 
-                                        width: '60%',
-                                        outline: 'none'
-                                    }} 
+                                    style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '2rem', width: '60%', outline: 'none', fontFamily: 'var(--font-display)' }} 
                                 />
                             )}
-                            <TokenSelector selectedToken={buyToken} onSelect={setBuyToken} />
+                            <TokenSelector selectedToken={buyToken} onSelect={setBuyToken} chainId={targetChain} />
                         </div>
                     </div>
 
-                    {/* Aggregator Comparison */}
-                    <div style={{ marginTop: '0.5rem' }}>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.8rem', fontWeight: 600, letterSpacing: '0.05em' }}>
-                            MULTI-AGGREGATOR RACE (Select One)
-                        </div>
-                        
-                        {error && <div style={{color:'red', fontSize:'0.8rem'}}>{error}</div>}
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {quotes.length === 0 && !isLoading && !error && (
-                                <div style={{textAlign:'center', color:'#555', fontSize:'0.9rem', padding:'1rem'}}>Enter amount to start race</div>
-                            )}
-                            
-                            {quotes.map((quote, i) => {
-                                const outputFmt = parseFloat(ethers.formatUnits(quote.output, TOKENS.USDC.decimals)).toFixed(4);
-                                const netValueStr = quote.netValueUsd ? `$${quote.netValueUsd.toFixed(2)}` : '---';
-                                const gasCostStr = quote.gasCostUsd ? `$${quote.gasCostUsd.toFixed(2)}` : '---';
-                                
-                                const isSelected = selectedQuote && selectedQuote.provider === quote.provider;
-                                const isError = !!quote.error;
-
-                                return (
-                                <div 
-                                    key={i} 
-                                    onClick={() => !isError && setSelectedQuote(quote)}
-                                    style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        alignItems: 'center', 
-                                        padding: '0.8rem', 
-                                        borderRadius: '0.8rem', 
-                                        background: isError ? 'rgba(255,0,0,0.05)' : (isSelected ? 'rgba(255, 113, 32, 0.2)' : (quote.isBest ? 'rgba(255, 113, 32, 0.05)' : 'rgba(255,255,255,0.03)')),
-                                        border: isError ? '1px solid rgba(255,0,0,0.1)' : (isSelected ? '1px solid var(--accent-color)' : (quote.isBest ? '1px solid rgba(255, 113, 32, 0.3)' : '1px solid transparent')),
-                                        cursor: isError ? 'not-allowed' : 'pointer',
-                                        transition: 'all 0.2s',
-                                        opacity: isError ? 0.6 : 1
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{quote.provider}</div>
-                                            {quote.isBest && !isError && <span style={{ fontSize: '0.7rem', background: 'var(--accent-color)', color: 'white', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>WINNER</span>}
-                                            {isError && <span style={{ fontSize: '0.7rem', background: '#ef4444', color: 'white', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>FAILED</span>}
+                    {/* Compact Quote List */}
+                    {quotes.length > 0 && !isLoading && !error && (
+                         <div style={{ marginTop: '0.5rem', display:'flex', flexDirection:'column', gap:'8px' }}>
+                             {quotes.map((quote, i) => {
+                                 const isSelected = selectedQuote && selectedQuote.provider === quote.provider;
+                                 return (
+                                    <div 
+                                        key={i}
+                                        onClick={() => !quote.error && setSelectedQuote(quote)}
+                                        style={{
+                                            padding: '10px',
+                                            borderRadius: '8px',
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                            background: isSelected ? 'rgba(255, 113, 32, 0.2)' : 'rgba(255,255,255,0.05)',
+                                            border: isSelected ? '1px solid var(--accent-color)' : '1px solid transparent',
+                                            cursor: quote.error ? 'default' : 'pointer',
+                                            opacity: quote.error ? 0.5 : 1
+                                        }}
+                                    >
+                                        <div style={{display:'flex', alignItems:'center', gap:'8px'}}>
+                                            <span style={{fontWeight:600, fontSize:'0.9rem'}}>{quote.provider}</span>
+                                            {quote.isBest && !quote.error && <span style={{fontSize:'0.65rem', background: '#4CAF50', color:'white', padding:'1px 4px', borderRadius:'4px'}}>BEST</span>}
+                                            {quote.error && <span style={{fontSize:'0.65rem', background: '#ef4444', color:'white', padding:'1px 4px', borderRadius:'4px'}}>FAIL</span>}
                                         </div>
-                                        <div style={{ fontSize: '0.75rem', color: '#aaa' }}>
-                                            {isError ? (
-                                                <span style={{color:'#ef4444'}}>
-                                                    {quote.error.length > 25 ? quote.error.substring(0,25)+'...' : quote.error}
-                                                </span>
-                                            ) : (
-                                                <>Net Value: <span style={{color: quote.isBest ? 'var(--accent-color)' : '#bbb', fontWeight:'600'}}>{netValueStr}</span></>
-                                            )}
+                                        <div style={{fontWeight:600, fontSize:'0.9rem'}}>
+                                            {quote.error ? '---' : `${parseFloat(ethers.formatUnits(quote.output, buyToken.decimals)).toFixed(4)} ${buyToken.symbol}`}
                                         </div>
                                     </div>
-                                    
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontWeight: 600, color: isError ? '#ef4444' : (quote.isBest ? 'var(--accent-color)' : 'var(--text-color)') }}>
-                                            {isError ? 'Unavailable' : `${outputFmt} USDC`}
-                                        </div>
-                                        {!isError && (
-                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'4px' }}>
-                                                <Fuel size={10} /> Gas: <span style={{color:'#f87171'}}>-{gasCostStr}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )})}
-                        </div>
-                    </div>
+                                 )
+                             })}
+                         </div>
+                    )}
 
-                    <div style={{ marginTop: '1rem' }}>
-                        <button 
-                            disabled={!account || isLoading || swapStatus !== 'idle' || (!selectedQuote && !mockMode)}
-                            onClick={!account ? connectWallet : executeSwap}
-                            style={{
+                    <button 
+                        onClick={executeSwap}
+                        disabled={isLoading || swapStatus !== 'idle' || (!selectedQuote && !mockMode)}
+                        style={{
                             width: '100%',
-                            background: (isLoading || swapStatus !== 'idle' || (!selectedQuote && !mockMode)) ? '#333' : 'var(--accent-color)',
-                            border: 'none',
                             padding: '1.2rem',
                             borderRadius: '1rem',
+                            border: 'none',
+                            background: (isLoading || swapStatus !== 'idle' || (!selectedQuote && !mockMode)) ? '#333' : 'var(--accent-color)',
                             color: 'white',
                             fontWeight: 700,
+                            cursor: (isLoading || swapStatus !== 'idle' || (!selectedQuote && !mockMode)) ? 'not-allowed' : 'pointer',
                             fontSize: '1rem',
-                            fontFamily: 'var(--font-display)',
-                            cursor: (!account || isLoading || swapStatus !== 'idle' || (!selectedQuote && !mockMode)) ? 'not-allowed' : 'pointer',
-                            transition: 'all 0.2s',
-                            opacity: (!account || isLoading || swapStatus !== 'idle' || (!selectedQuote && !mockMode)) ? 0.7 : 1
-                        }}>
-                             {!account ? 'CONNECT WALLET' : 
-                                isLoading ? 'FETCHING QUOTES...' :
-                                !selectedQuote && !mockMode ? 'WAITING FOR QUOTE...' :
-                                swapStatus === 'initiating' ? 'INITIATING...' :
-                                swapStatus === 'approving' ? 'APPROVING...' :
-                                swapStatus === 'swapping' ? 'SWAPPING...' :
-                                'SWAP NOW'}
-                        </button>
-                    </div>
+                            marginTop: '1rem'
+                        }}
+                    >
+                        {!account ? 'CONNECT WALLET' : 
+                            isLoading ? 'FETCHING...' : 
+                            !selectedQuote && !mockMode ? 'WAITING FOR QUOTE...' :
+                            swapStatus === 'idle' ? 'SWAP NOW' : 
+                            swapStatus.toUpperCase() + '...'}
+                    </button>
+
                 </div>
             </GlowingCard>
         </div>

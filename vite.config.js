@@ -6,23 +6,25 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      // Ethereum 0x
       '/api/0x': {
         target: 'https://api.0x.org',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/0x/, '')
       },
-      // Proxy for Polygon 0x
-      '/api/polygon.0x': {
-        target: 'https://polygon.api.0x.org',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/polygon.0x/, '')
-      },
-      // Proxy for BSC 0x
+      // ADDED: BSC 0x (Critical for your issue)
       '/api/bsc.0x': {
         target: 'https://bsc.api.0x.org',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/bsc.0x/, '')
       },
+      // ADDED: Polygon 0x
+      '/api/polygon.0x': {
+        target: 'https://polygon.api.0x.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/polygon.0x/, '')
+      },
+      // 1inch
       '/api/1inch': {
         target: 'https://api.1inch.dev',
         changeOrigin: true,

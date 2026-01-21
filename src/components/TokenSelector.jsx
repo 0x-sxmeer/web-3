@@ -1,56 +1,45 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronDown, Search, Loader2 } from 'lucide-react';
-import { ethers } from 'ethers';
-import { useWallet } from '../contexts/WalletContext';
-import { fetchOneInchTokens } from '../services/tokenService'; // Import the new service
-import { getTokensForNetwork } from '../services/tokenLists'; // Keep as fallback
+import { fetchOneInchTokens } from '../services/tokenService';
+import { getTokensForNetwork } from '../services/tokenLists';
 
-const TokenSelector = ({ selectedToken, onSelect }) => {
+const TokenSelector = ({ selectedToken, onSelect, chainId }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [tokenList, setTokenList] = useState([]);
-    const [isLoadingList, setIsLoadingList] = useState(false);
-    const { chainId } = useWallet();
+    const [isLoading, setIsLoading] = useState(false);
 
-    // 1. Fetch Tokens when Chain Changes or Menu Opens
+    // Reload tokens when Chain ID changes (e.g., user switches from ETH to BSC)
     useEffect(() => {
         if (isOpen) {
             const loadTokens = async () => {
-                const currentChain = Number(chainId) || 1;
+                const target = Number(chainId) || 1;
                 
-                // Start with default/hardcoded tokens immediately
-                const defaults = getTokensForNetwork(currentChain);
+                // Show default list immediately for responsiveness
+                const defaults = getTokensForNetwork(target);
                 setTokenList(defaults);
 
-                setIsLoadingList(true);
-                // Fetch full list in background
-                const fullList = await fetchOneInchTokens(currentChain);
-                if (fullList.length > 0) {
-                    setTokenList(fullList);
+                setIsLoading(true);
+                // Fetch tokens for the chain selected in SwapCard
+                const list = await fetchOneInchTokens(target);
+                if (list && list.length > 0) {
+                    setTokenList(list);
                 }
-                setIsLoadingList(false);
+                setIsLoading(false);
             };
             loadTokens();
         }
     }, [isOpen, chainId]);
 
-    // 2. Filter Logic (Memoized for performance)
     const filteredTokens = useMemo(() => {
         if (!searchQuery) return tokenList;
-
-        const lowerQuery = searchQuery.toLowerCase();
+        const lower = searchQuery.toLowerCase();
         return tokenList.filter(t => 
-            t.symbol.toLowerCase().includes(lowerQuery) || 
-            t.name.toLowerCase().includes(lowerQuery) ||
-            t.address.toLowerCase() === lowerQuery // Exact match for address
+            t.symbol.toLowerCase().includes(lower) || 
+            t.name.toLowerCase().includes(lower) ||
+            t.address.toLowerCase() === lower
         );
     }, [tokenList, searchQuery]);
-
-    const selectToken = (t) => {
-        onSelect(t);
-        setIsOpen(false);
-        setSearchQuery('');
-    };
 
     return (
         <div style={{ position: 'relative' }}>
@@ -60,96 +49,62 @@ const TokenSelector = ({ selectedToken, onSelect }) => {
                     display: 'flex', alignItems: 'center', gap: '8px', 
                     background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)', 
                     borderRadius: '2rem', padding: '0.5rem 1rem', color: 'white', fontWeight: 600, cursor: 'pointer',
-                    minWidth: '120px', justifyContent: 'space-between'
+                    minWidth: '120px', justifyContent:'space-between'
                 }}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {selectedToken.logo ? (
-                        <img src={selectedToken.logo} alt={selectedToken.symbol} 
-                             style={{ width: 24, height: 24, borderRadius: '50%' }} 
-                             onError={(e) => {e.target.style.display='none'}} // Hide broken images
-                        />
+                    {selectedToken?.logo ? (
+                        <img src={selectedToken.logo} style={{ width: 24, height: 24, borderRadius: '50%' }} onError={(e) => {e.target.style.display='none'}} />
                     ) : (
-                        <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg, #627EEA 0%, #3D58B6 100%)' }}></div>
+                        <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#444' }}></div>
                     )}
-                    {selectedToken.symbol} 
+                    {selectedToken?.symbol || "Select"} 
                 </div>
                 <ChevronDown size={14} />
             </button>
 
             {isOpen && (
                 <div style={{
-                    position: 'absolute', top: '120%', right: 0, width: '350px',
-                    background: '#1a1b1e', border: '1px solid #333', borderRadius: '1rem',
-                    padding: '1rem', zIndex: 100, boxShadow: '0 10px 40px rgba(0,0,0,0.5)'
+                    position: 'absolute', top: '120%', right: 0, width: '320px',
+                    background: '#1a1b1e', border: '1px solid #333', borderRadius: '1rem', padding: '1rem', zIndex: 100,
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.5)'
                 }}>
-                    {/* Search Input */}
-                    <div style={{ position: 'relative', marginBottom: '1rem' }}>
-                        <Search size={16} style={{ position: 'absolute', left: 12, top: 12, color: '#666' }} />
+                    <div style={{position:'relative', marginBottom:'10px'}}>
                         <input 
-                            type="text" 
-                            placeholder="Search name or paste address..." 
+                            placeholder="Search token..."
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            style={{
-                                width: '100%', background: '#111', border: '1px solid #333',
-                                borderRadius: '0.5rem', padding: '0.6rem 0.6rem 0.6rem 2.2rem',
-                                color: 'white', fontSize: '0.9rem', outline: 'none'
-                            }}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid #333', background: '#111', color: 'white', outline:'none' }}
                         />
-                        {isLoadingList && <Loader2 size={16} className="animate-spin" style={{ position: 'absolute', right: 12, top: 12, color: '#FF7120' }} />}
+                        {isLoading && <Loader2 size={16} className="animate-spin" style={{position:'absolute', right:12, top:12, color:'#ff7120'}} />}
                     </div>
-
-                    {/* List */}
-                    <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    
+                    <div style={{ maxHeight: '300px', overflowY: 'auto', display:'flex', flexDirection:'column', gap:'4px' }}>
+                        {filteredTokens.length === 0 && !isLoading && <div style={{textAlign:'center', padding:'20px', color:'#666'}}>No tokens found</div>}
                         
-                        {filteredTokens.length === 0 && !isLoadingList && (
-                            <div style={{ padding: '1rem', textAlign: 'center', color: '#666', fontSize: '0.9rem' }}>
-                                No tokens found
-                            </div>
-                        )}
-
-                        {/* Performance Optimization: Only render top 100 if searching to avoid lag */}
-                        {filteredTokens.slice(0, 100).map((t) => (
+                         {filteredTokens.slice(0, 100).map(t => (
                             <div 
                                 key={t.address}
-                                onClick={() => selectToken(t)}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '10px',
-                                    padding: '0.6rem', borderRadius: '0.5rem',
-                                    cursor: 'pointer',
-                                    background: selectedToken.address === t.address ? 'rgba(255, 113, 32, 0.1)' : 'transparent'
+                                onClick={() => { onSelect(t); setIsOpen(false); }}
+                                style={{ 
+                                    display: 'flex', alignItems: 'center', gap: '10px', padding: '8px', 
+                                    cursor: 'pointer', borderRadius:'8px',
+                                    background: selectedToken?.address === t.address ? 'rgba(255, 113, 32, 0.1)' : 'transparent'
                                 }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = selectedToken.address === t.address ? 'rgba(255, 113, 32, 0.1)' : 'transparent'}
+                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = selectedToken?.address === t.address ? 'rgba(255, 113, 32, 0.1)' : 'transparent'}
                             >
-                                <img 
-                                    src={t.logo || 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png'} 
-                                    alt={t.symbol} 
-                                    style={{ width: 28, height: 28, borderRadius: '50%' }}
-                                    onError={(e) => {e.target.src = 'https://etherscan.io/images/main/empty-token.png'}} 
-                                />
-                                <div style={{flex: 1}}>
-                                    <div style={{ fontWeight: 600, display:'flex', justifyContent:'space-between' }}>
-                                        <span>{t.symbol}</span>
-                                        {/* Optional: Show balance here later if needed */}
-                                    </div>
-                                    <div style={{ fontSize: '0.75rem', color: '#666' }}>{t.name}</div>
+                                <img src={t.logo} style={{ width: 28, height: 28, borderRadius: '50%' }} onError={(e) => {e.target.src='https://etherscan.io/images/main/empty-token.png'}} />
+                                <div>
+                                    <div style={{ fontWeight: 600 }}>{t.symbol}</div>
+                                    <div style={{ fontSize: '0.8rem', color: '#888' }}>{t.name}</div>
                                 </div>
-                                {selectedToken.address === t.address && <div style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-color)' }}></div>}
                             </div>
                         ))}
                     </div>
                 </div>
             )}
-            
-            {/* Backdrop to close */}
-            {isOpen && (
-                <div 
-                    onClick={() => setIsOpen(false)}
-                    style={{ position: 'fixed', inset: 0, zIndex: 90 }} 
-                />
-            )}
+            {isOpen && <div onClick={() => setIsOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />}
         </div>
     );
 };
