@@ -51,6 +51,15 @@ export const useAggregator = () => {
         };
     };
 
+    // HELPER FUNCTION: Fixes the 0x address issue
+    const formatTokenFor0x = (tokenAddress) => {
+        // 0x API expects "ETH" string for native token, not 0xeeee... address
+        if (tokenAddress.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
+            return 'ETH';
+        }
+        return tokenAddress;
+    };
+
     const getQuotes = useCallback(async ({ 
         sellToken, 
         buyToken, 
@@ -101,7 +110,11 @@ export const useAggregator = () => {
             }
             // For testnets or unsupported chains, 0x might not work - we'll let it fail gracefully
             
-            const zeroXUrl = `${zeroXBaseUrl}/swap/v1/quote?sellToken=${sellToken}&buyToken=${buyToken}&sellAmount=${amount}${zeroXTakerAddress ? `&takerAddress=${zeroXTakerAddress}` : ''}&skipValidation=true`;
+            // CRITICAL FIX: Convert 0xeeee... to 'ETH' for 0x API
+            const zeroXSellToken = formatTokenFor0x(sellToken);
+            const zeroXBuyToken = formatTokenFor0x(buyToken);
+            
+            const zeroXUrl = `${zeroXBaseUrl}/swap/v1/quote?sellToken=${zeroXSellToken}&buyToken=${zeroXBuyToken}&sellAmount=${amount}${zeroXTakerAddress ? `&takerAddress=${zeroXTakerAddress}` : ''}&skipValidation=true`;
             console.log("0x Requesting:", zeroXUrl);
 
             const zeroXPromise = fetch(zeroXUrl, {

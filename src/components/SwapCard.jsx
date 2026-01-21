@@ -60,9 +60,12 @@ const SwapCard = () => {
     const handleFetchQuotes = () => {
         if (!fromAmount || parseFloat(fromAmount) === 0) return;
         
+        // FORCE ETHEREUM MAINNET (Chain ID 1)
+        const TARGET_CHAIN_ID = 1;
+        
         try {
             const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals).toString();
-            console.log("Fetching quotes for:", amountWei, "on chain:", chainId);
+            console.log("Fetching quotes for:", amountWei, "on chain:", TARGET_CHAIN_ID);
             
             getQuotes({
                 sellToken: sellToken.address, 
@@ -70,7 +73,7 @@ const SwapCard = () => {
                 amount: amountWei,
                 userAddress: account || '0x0000000000000000000000000000000000000000',
                 buyTokenDecimals: buyToken.decimals,
-                chainId: Number(chainId) || 1 // Pass current chain ID
+                chainId: TARGET_CHAIN_ID // ALWAYS use Ethereum Mainnet
             });
         } catch (e) {
             console.error("Invalid amount", e);
@@ -174,18 +177,20 @@ const SwapCard = () => {
         
         
         // 1. SAFETY CHECK: Ensure we are on the correct chain
+        // FORCE ETHEREUM MAINNET (Chain ID 1)
+        const TARGET_CHAIN_ID = 1;
+        
         try {
             const network = await signer.provider.getNetwork();
             const currentChainId = Number(network.chainId);
-            const expectedChainId = Number(chainId) || 1;
             
-            console.log("Network Check:", { currentChainId, expectedChainId });
+            console.log("Network Check:", { currentChainId, requiredChainId: TARGET_CHAIN_ID });
             
-            if (currentChainId !== expectedChainId) {
-                console.log("⚠️ Network mismatch detected. Attempting auto-switch...");
+            if (currentChainId !== TARGET_CHAIN_ID) {
+                console.log("⚠️ Network mismatch detected. Attempting auto-switch to Ethereum Mainnet...");
                 
                 // Convert chainId to hex format for wallet_switchEthereumChain
-                const chainIdHex = '0x' + expectedChainId.toString(16);
+                const chainIdHex = '0x' + TARGET_CHAIN_ID.toString(16); // 0x1 for Ethereum
                 
                 try {
                     // Attempt to switch network automatically
@@ -194,8 +199,8 @@ const SwapCard = () => {
                         params: [{ chainId: chainIdHex }],
                     });
                     
-                    console.log("✅ Network switched successfully!");
-                    alert(`Network switched to ${networkName}!\n\nPlease click "SWAP NOW" again to execute the swap.`);
+                    console.log("✅ Network switched successfully to Ethereum Mainnet!");
+                    alert(`Network switched to Ethereum Mainnet!\n\nPlease click "SWAP NOW" again to execute the swap.`);
                     return; // User needs to click swap again after network switch
                     
                 } catch (switchError) {
@@ -203,9 +208,9 @@ const SwapCard = () => {
                     
                     // If user rejected the switch or it failed
                     if (switchError.code === 4001) {
-                        alert(`Network Switch Rejected\n\nYou need to be on ${networkName} (Chain ${expectedChainId}) to execute this swap.\n\nPlease switch networks manually in your wallet.`);
+                        alert(`Network Switch Rejected\n\nYou need to be on Ethereum Mainnet (Chain 1) to execute this swap.\n\nPlease switch networks manually in your wallet.`);
                     } else {
-                        alert(`Failed to switch network automatically.\n\nPlease manually switch your wallet to ${networkName} (Chain ${expectedChainId}).`);
+                        alert(`Failed to switch network automatically.\n\nPlease manually switch your wallet to Ethereum Mainnet (Chain 1).`);
                     }
                     return;
                 }

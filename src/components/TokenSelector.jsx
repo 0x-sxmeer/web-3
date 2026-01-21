@@ -1,77 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronDown, Search, Loader2 } from 'lucide-react';
 import { ethers } from 'ethers';
 import { useWallet } from '../contexts/WalletContext';
-import { getTokensForNetwork } from '../services/tokenLists';
-
-// Minimal ERC20 ABI for valid Metadata
-const ERC20_ABI = [
-  "function symbol() view returns (string)",
-  "function decimals() view returns (uint8)"
-];
+import { fetchOneInchTokens } from '../services/tokenService'; // Import the new service
+import { getTokensForNetwork } from '../services/tokenLists'; // Keep as fallback
 
 const TokenSelector = ({ selectedToken, onSelect }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [foundToken, setFoundToken] = useState(null);
+    const [tokenList, setTokenList] = useState([]);
+    const [isLoadingList, setIsLoadingList] = useState(false);
     const { chainId } = useWallet();
 
-    // Get tokens for current network
-    const defaultTokens = getTokensForNetwork(Number(chainId) || 1);
-
-    const handleSearch = async (query) => {
-        setSearchQuery(query);
-        setError(null);
-        setFoundToken(null);
-
-        // Validation: 0x + 40 hex chars = 42 chars total
-        if (query.startsWith('0x') && query.length === 42) {
-            setLoading(true);
-            try {
-                // Connect to provider (using window.ethereum if available, else standard RPC)
-                // For read-only, we can try to use window.ethereum even if not connected, or a default provider
-                // Using a fallback public RPC for stability if window.ethereum isn't ready
-                let provider;
-                if (window.ethereum) {
-                    provider = new ethers.BrowserProvider(window.ethereum);
-                } else {
-                    // Fallback to a public node if needed, but for now let's rely on browser wallet or throw
-                    // throw new Error("No wallet provider found");
-                    // Actually, let's just use cloudfare for public read if no wallet
-                    provider = new ethers.JsonRpcProvider("https://eth.llamarpc.com");
-                }
-
-                const contract = new ethers.Contract(query, ERC20_ABI, provider);
+    // 1. Fetch Tokens when Chain Changes or Menu Opens
+    useEffect(() => {
+        if (isOpen) {
+            const loadTokens = async () => {
+                const currentChain = Number(chainId) || 1;
                 
-                // Fetch metadata in parallel
-                const [symbol, decimals] = await Promise.all([
-                    contract.symbol(),
-                    contract.decimals()
-                ]);
+                // Start with default/hardcoded tokens immediately
+                const defaults = getTokensForNetwork(currentChain);
+                setTokenList(defaults);
 
-                setFoundToken({
-                    address: query,
-                    symbol: symbol,
-                    decimals: Number(decimals),
-                    logo: null // No logo for custom tokens usually
-                });
-
-            } catch (err) {
-                console.error("Token fetch error:", err);
-                setError("Invalid contract or not an ERC20");
-            } finally {
-                setLoading(false);
-            }
+                setIsLoadingList(true);
+                // Fetch full list in background
+                const fullList = await fetchOneInchTokens(currentChain);
+                if (fullList.length > 0) {
+                    setTokenList(fullList);
+                }
+                setIsLoadingList(false);
+            };
+            loadTokens();
         }
-    };
+    }, [isOpen, chainId]);
+
+    // 2. Filter Logic (Memoized for performance)
+    const filteredTokens = useMemo(() => {
+        if (!searchQuery) return tokenList;
+
+        const lowerQuery = searchQuery.toLowerCase();
+        return tokenList.filter(t => 
+            t.symbol.toLowerCase().includes(lowerQuery) || 
+            t.name.toLowerCase().includes(lowerQuery) ||
+            t.address.toLowerCase() === lowerQuery // Exact match for address
+        );
+    }, [tokenList, searchQuery]);
 
     const selectToken = (t) => {
         onSelect(t);
         setIsOpen(false);
         setSearchQuery('');
-        setFoundToken(null);
     };
 
     return (
@@ -82,12 +60,15 @@ const TokenSelector = ({ selectedToken, onSelect }) => {
                     display: 'flex', alignItems: 'center', gap: '8px', 
                     background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)', 
                     borderRadius: '2rem', padding: '0.5rem 1rem', color: 'white', fontWeight: 600, cursor: 'pointer',
-                    minWidth: '100px', justifyContent: 'space-between'
+                    minWidth: '120px', justifyContent: 'space-between'
                 }}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {selectedToken.logo ? (
-                        <img src={selectedToken.logo} alt={selectedToken.symbol} style={{ width: 24, height: 24, borderRadius: '50%' }} />
+                        <img src={selectedToken.logo} alt={selectedToken.symbol} 
+                             style={{ width: 24, height: 24, borderRadius: '50%' }} 
+                             onError={(e) => {e.target.style.display='none'}} // Hide broken images
+                        />
                     ) : (
                         <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg, #627EEA 0%, #3D58B6 100%)' }}></div>
                     )}
@@ -98,7 +79,7 @@ const TokenSelector = ({ selectedToken, onSelect }) => {
 
             {isOpen && (
                 <div style={{
-                    position: 'absolute', top: '120%', right: 0, width: '300px',
+                    position: 'absolute', top: '120%', right: 0, width: '350px',
                     background: '#1a1b1e', border: '1px solid #333', borderRadius: '1rem',
                     padding: '1rem', zIndex: 100, boxShadow: '0 10px 40px rgba(0,0,0,0.5)'
                 }}>
@@ -107,46 +88,29 @@ const TokenSelector = ({ selectedToken, onSelect }) => {
                         <Search size={16} style={{ position: 'absolute', left: 12, top: 12, color: '#666' }} />
                         <input 
                             type="text" 
-                            placeholder="Search or paste address (0x...)" 
+                            placeholder="Search name or paste address..." 
                             value={searchQuery}
-                            onChange={(e) => handleSearch(e.target.value)}
+                            onChange={(e) => setSearchQuery(e.target.value)}
                             style={{
                                 width: '100%', background: '#111', border: '1px solid #333',
                                 borderRadius: '0.5rem', padding: '0.6rem 0.6rem 0.6rem 2.2rem',
                                 color: 'white', fontSize: '0.9rem', outline: 'none'
                             }}
                         />
-                        {loading && <Loader2 size={16} className="animate-spin" style={{ position: 'absolute', right: 12, top: 12, color: '#666' }} />}
+                        {isLoadingList && <Loader2 size={16} className="animate-spin" style={{ position: 'absolute', right: 12, top: 12, color: '#FF7120' }} />}
                     </div>
 
-                    {/* Error Msg */}
-                    {error && <div style={{ color: '#f87171', fontSize: '0.8rem', padding: '0.5rem' }}>{error}</div>}
-
                     {/* List */}
-                    <div style={{ maxHeight: '250px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         
-                        {/* Found Token (High Priority) */}
-                        {foundToken && (
-                            <div 
-                                onClick={() => selectToken(foundToken)}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '10px',
-                                    padding: '0.6rem', borderRadius: '0.5rem',
-                                    cursor: 'pointer', background: 'rgba(255, 113, 32, 0.1)'
-                                }}
-                            >
-                                <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#555', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem' }}>?</div>
-                                <div>
-                                    <div style={{ fontWeight: 600 }}>{foundToken.symbol}</div>
-                                    <div style={{ fontSize: '0.7rem', color: '#888' }}>Imported Address</div>
-                                </div>
+                        {filteredTokens.length === 0 && !isLoadingList && (
+                            <div style={{ padding: '1rem', textAlign: 'center', color: '#666', fontSize: '0.9rem' }}>
+                                No tokens found
                             </div>
                         )}
 
-                        {/* Default Tokens (Filtered) */}
-                        {!foundToken && defaultTokens
-                            .filter(t => t.symbol.toLowerCase().includes(searchQuery.toLowerCase()) || t.address.toLowerCase().includes(searchQuery.toLowerCase()))
-                            .map((t) => (
+                        {/* Performance Optimization: Only render top 100 if searching to avoid lag */}
+                        {filteredTokens.slice(0, 100).map((t) => (
                             <div 
                                 key={t.address}
                                 onClick={() => selectToken(t)}
@@ -154,15 +118,23 @@ const TokenSelector = ({ selectedToken, onSelect }) => {
                                     display: 'flex', alignItems: 'center', gap: '10px',
                                     padding: '0.6rem', borderRadius: '0.5rem',
                                     cursor: 'pointer',
-                                    background: selectedToken.address === t.address ? 'rgba(255, 255, 255, 0.05)' : 'transparent'
+                                    background: selectedToken.address === t.address ? 'rgba(255, 113, 32, 0.1)' : 'transparent'
                                 }}
                                 onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = selectedToken.address === t.address ? 'rgba(255, 255, 255, 0.05)' : 'transparent'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = selectedToken.address === t.address ? 'rgba(255, 113, 32, 0.1)' : 'transparent'}
                             >
-                                <img src={t.logo} alt={t.symbol} style={{ width: 26, height: 26, borderRadius: '50%' }} />
-                                <div>
-                                    <div style={{ fontWeight: 600 }}>{t.symbol}</div>
-                                    <div style={{ fontSize: '0.7rem', color: '#666' }}>{t.symbol}</div>
+                                <img 
+                                    src={t.logo || 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png'} 
+                                    alt={t.symbol} 
+                                    style={{ width: 28, height: 28, borderRadius: '50%' }}
+                                    onError={(e) => {e.target.src = 'https://etherscan.io/images/main/empty-token.png'}} 
+                                />
+                                <div style={{flex: 1}}>
+                                    <div style={{ fontWeight: 600, display:'flex', justifyContent:'space-between' }}>
+                                        <span>{t.symbol}</span>
+                                        {/* Optional: Show balance here later if needed */}
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', color: '#666' }}>{t.name}</div>
                                 </div>
                                 {selectedToken.address === t.address && <div style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-color)' }}></div>}
                             </div>
