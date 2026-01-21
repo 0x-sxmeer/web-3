@@ -5,12 +5,14 @@ import { useAggregator } from '../hooks/useAggregator';
 import { TOKENS } from '../services/web3Service';
 import { ethers } from 'ethers';
 import { useWallet } from '../contexts/WalletContext';
+import { getTokensForNetwork } from '../services/tokenLists';
 
 import TokenSelector from './TokenSelector';
 
 const SwapCard = () => {
     // Core State
-    const { account, balance, connectWallet, signer } = useWallet();
+    const { account, balance, connectWallet, signer, chainId, networkName } = useWallet();
+    const [mockMode, setMockMode] = useState(false);
     
     // Token State
     const [sellToken, setSellToken] = useState({ 
@@ -60,14 +62,15 @@ const SwapCard = () => {
         
         try {
             const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals).toString();
-            console.log("Fetching quotes for:", amountWei);
+            console.log("Fetching quotes for:", amountWei, "on chain:", chainId);
             
             getQuotes({
                 sellToken: sellToken.address, 
                 buyToken: buyToken.address, 
                 amount: amountWei,
                 userAddress: account || '0x0000000000000000000000000000000000000000',
-                buyTokenDecimals: buyToken.decimals // Passing decimals to hook
+                buyTokenDecimals: buyToken.decimals,
+                chainId: Number(chainId) || 1 // Pass current chain ID
             });
         } catch (e) {
             console.error("Invalid amount", e);
@@ -130,7 +133,63 @@ const SwapCard = () => {
     ];
 
     const executeSwap = async () => {
-        if (!account || !selectedQuote || !signer) return; // Ensure signer is available
+        console.log("=== SWAP BUTTON CLICKED ===");
+        console.log("Account:", account);
+        console.log("Selected Quote:", selectedQuote);
+        console.log("Signer:", signer);
+        console.log("Mock Mode:", mockMode);
+        
+        if (!account) {
+            console.error("❌ Swap blocked: No account connected");
+            alert("Please connect your wallet first!");
+            return;
+        }
+        
+        if (!selectedQuote) {
+            console.error("❌ Swap blocked: No quote selected");
+            alert("No quote available. Please wait for quotes to load.");
+            return;
+        }
+        
+        if (!signer && !mockMode) {
+            console.error("❌ Swap blocked: No signer available");
+            alert("Wallet not properly connected. Please reconnect your wallet.");
+            return;
+        }
+        
+        // MOCK MODE: Simulate swap without real transaction
+        if (mockMode) {
+            console.log("🎭 MOCK MODE: Simulating swap...");
+            setSwapStatus('initiating');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            setSwapStatus('swapping');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            setSwapStatus('success');
+            alert(`✅ Mock Swap Completed!\n\nSwapped ${fromAmount} ${sellToken.symbol} for ~${toAmount} ${buyToken.symbol}\n\n(This was a simulated transaction)`);
+            setSwapStatus('idle');
+            return;
+        }
+        
+        // 1. SAFETY CHECK: Ensure we are on the correct chain
+        try {
+            const network = await signer.provider.getNetwork();
+            const currentChainId = Number(network.chainId);
+            const expectedChainId = Number(chainId) || 1;
+            
+            console.log("Network Check:", { currentChainId, expectedChainId });
+            
+            if (currentChainId !== expectedChainId) {
+                alert(`Wrong Network!\n\nYour wallet is on chain ${currentChainId}, but the quote is for chain ${expectedChainId}.\n\nPlease switch your wallet to the correct network.`);
+                return;
+            }
+        } catch (networkError) {
+            console.error("Network check failed:", networkError);
+            alert("Failed to verify network. Please check your wallet connection.");
+            return;
+        }
+        
         setSwapStatus('initiating');
 
         try {
@@ -140,7 +199,7 @@ const SwapCard = () => {
             const quoteToExecute = selectedQuote;
             console.log("Executing Quote:", quoteToExecute);
 
-            // 1. APPROVAL CHECK (If selling ERC20)
+            // 2. APPROVAL CHECK (If selling ERC20)
             if (sellToken.symbol !== 'ETH') {
                 // Determine Spender
                 let spender = null;
@@ -169,7 +228,7 @@ const SwapCard = () => {
                 }
             }
 
-            // 2. EXECUTE SWAP
+            // 3. EXECUTE SWAP
             setSwapStatus('swapping');
             
             let txParams = {};
@@ -177,18 +236,32 @@ const SwapCard = () => {
                 txParams = {
                     to: quoteToExecute.data.to,
                     data: quoteToExecute.data.data,
-                    value: quoteToExecute.data.value || "0" // Default to 0 if missing
+                    value: quoteToExecute.data.value || "0"
                 };
             } else if (quoteToExecute.provider === '1inch') {
                 txParams = {
                     to: quoteToExecute.data.tx.to,
                     data: quoteToExecute.data.tx.data,
-                    value: quoteToExecute.data.tx.value || "0" // Default to 0 if missing
+                    value: quoteToExecute.data.tx.value || "0"
                 };
             }
 
             if (!txParams.to || !txParams.data) {
                 throw new Error(`Invalid Transaction Params: to=${txParams.to}, data=${txParams.data ? 'present' : 'missing'}`);
+            }
+
+            // 4. GAS ESTIMATION (Critical for professional feel)
+            console.log("Estimating gas...");
+            try {
+                const estimatedGas = await signer.estimateGas(txParams);
+                // Add a 10% buffer to the gas limit to prevent "Out of Gas" errors
+                txParams.gasLimit = (estimatedGas * 110n) / 100n;
+                console.log("Gas estimated:", estimatedGas.toString(), "with buffer:", txParams.gasLimit.toString());
+            } catch (gasError) {
+                console.warn("⚠️ Gas estimation failed, transaction might revert", gasError);
+                // We proceed anyway but warn the user or set a high default
+                txParams.gasLimit = 300000n; // Safe default fallback
+                console.log("Using fallback gas limit:", txParams.gasLimit.toString());
             }
 
             console.log("Sending Transaction:", txParams);
@@ -200,7 +273,7 @@ const SwapCard = () => {
             setSwapStatus('success');
             alert(`Swap Completed! Tx Hash: ${tx.hash}`);
             setSwapStatus('idle'); // Reset after success
-            handleFetchQuotes();   // Refresh quotes?
+            handleFetchQuotes();   // Refresh quotes
 
         } catch (err) {
             console.error("Swap Error:", err);
@@ -226,6 +299,22 @@ const SwapCard = () => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 600 }}>Swap</h2>
+                            
+                            {/* Network Badge */}
+                            {chainId && (
+                                <div style={{
+                                    background: chainId === 11155111n ? 'rgba(255, 165, 0, 0.1)' : 'rgba(76, 175, 80, 0.1)',
+                                    border: `1px solid ${chainId === 11155111n ? 'rgba(255, 165, 0, 0.3)' : 'rgba(76, 175, 80, 0.3)'}`,
+                                    borderRadius: '4px',
+                                    padding: '2px 8px',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 600,
+                                    color: chainId === 11155111n ? '#FFA500' : '#4CAF50'
+                                }}>
+                                    {networkName}
+                                </div>
+                            )}
+                            
                             {/* Refresh Timer */}
                             <div 
                                 onClick={() => { setAutoRefresh(!autoRefresh); handleFetchQuotes(); }}
@@ -245,26 +334,55 @@ const SwapCard = () => {
                             </div>
                         </div>
 
-                        {/* Gas Toggle */}
-                        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '20px', padding: '2px' }}>
-                            {['economy', 'standard', 'fast'].map((speed) => (
-                                <button
-                                    key={speed}
-                                    onClick={() => setGasSpeed(speed)}
-                                    style={{
-                                        background: gasSpeed === speed ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                        border: 'none',
-                                        borderRadius: '16px',
-                                        padding: '4px 8px',
-                                        fontSize: '0.7rem',
-                                        color: gasSpeed === speed ? 'white' : '#888',
-                                        textTransform: 'capitalize'
-                                    }}
-                                >
-                                    {speed === 'fast' && <Zap size={10} style={{marginRight:2}} fill="currentColor"/>}
-                                    {speed}
-                                </button>
-                            ))}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            {/* Mock Mode Toggle */}
+                            <div 
+                                onClick={() => setMockMode(!mockMode)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    cursor: 'pointer',
+                                    padding: '4px 8px',
+                                    borderRadius: '6px',
+                                    background: mockMode ? 'rgba(255, 165, 0, 0.1)' : 'transparent',
+                                    border: `1px solid ${mockMode ? 'rgba(255, 165, 0, 0.3)' : 'transparent'}`,
+                                    transition: 'all 0.2s'
+                                }}
+                                title="Mock mode simulates swaps without real transactions"
+                            >
+                                <div style={{
+                                    width: 10,
+                                    height: 10,
+                                    borderRadius: '50%',
+                                    background: mockMode ? '#FFA500' : '#444'
+                                }}></div>
+                                <span style={{ fontSize: '0.7rem', color: mockMode ? '#FFA500' : '#666' }}>
+                                    {mockMode ? 'MOCK' : 'LIVE'}
+                                </span>
+                            </div>
+
+                            {/* Gas Toggle */}
+                            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '20px', padding: '2px' }}>
+                                {['economy', 'standard', 'fast'].map((speed) => (
+                                    <button
+                                        key={speed}
+                                        onClick={() => setGasSpeed(speed)}
+                                        style={{
+                                            background: gasSpeed === speed ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                            border: 'none',
+                                            borderRadius: '16px',
+                                            padding: '4px 8px',
+                                            fontSize: '0.7rem',
+                                            color: gasSpeed === speed ? 'white' : '#888',
+                                            textTransform: 'capitalize'
+                                        }}
+                                    >
+                                        {speed === 'fast' && <Zap size={10} style={{marginRight:2}} fill="currentColor"/>}
+                                        {speed}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
 

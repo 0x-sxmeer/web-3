@@ -121,6 +121,7 @@ export const WalletProvider = ({ children }) => {
     provider,
     signer,
     chainId,
+    networkName: chainId === 1n ? 'Ethereum' : chainId === 11155111n ? 'Sepolia' : 'Unknown',
     balance,       // Exported
     updateBalance, // Exported
     isConnecting,

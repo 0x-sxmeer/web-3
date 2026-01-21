@@ -51,8 +51,16 @@ export const useAggregator = () => {
         };
     };
 
-    const getQuotes = useCallback(async ({ sellToken, buyToken, amount, userAddress, slippage = 1, buyTokenDecimals = 18 }) => {
-        console.log("getQuotes INVOKED", { sellToken, buyToken, amount });
+    const getQuotes = useCallback(async ({ 
+        sellToken, 
+        buyToken, 
+        amount, 
+        userAddress, 
+        slippage = 1, 
+        buyTokenDecimals = 18,
+        chainId = 1 // Default to Ethereum Mainnet
+    }) => {
+        console.log("getQuotes INVOKED", { sellToken, buyToken, amount, chainId });
         if (!amount || parseFloat(amount) === 0) return;
         
         setIsLoading(true);
@@ -67,7 +75,6 @@ export const useAggregator = () => {
             const ONE_INCH_API_KEY = import.meta.env.VITE_1INCH_KEY;
 
             // Parallel requests + Gas Price
-            // Parallel requests + Gas Price
             const isMockAddress = !userAddress || userAddress.includes('123') || userAddress.length < 42 || userAddress === '0x0000000000000000000000000000000000000000';
             // 0x rejects zero address as takerAddress
             const zeroXTakerAddress = isMockAddress ? undefined : userAddress;
@@ -76,14 +83,25 @@ export const useAggregator = () => {
 
             console.log("API Keys Check:", {
                 ZeroX: ZERO_X_API_KEY ? `Present (${ZERO_X_API_KEY.length} chars)` : 'MISSING',
-                OneInch: ONE_INCH_API_KEY ? `Present (${ONE_INCH_API_KEY.length} chars)` : 'MISSING'
+                OneInch: ONE_INCH_API_KEY ? `Present (${ONE_INCH_API_KEY.length} chars)` : 'MISSING',
+                ChainId: chainId
             });
 
             // We need gas price for the race formula
             const currentGasPriceWei = await fetchGasPrice();
 
-            // 0x API
-            const zeroXUrl = `/api/0x/swap/v1/quote?sellToken=${sellToken}&buyToken=${buyToken}&sellAmount=${amount}${zeroXTakerAddress ? `&takerAddress=${zeroXTakerAddress}` : ''}&skipValidation=true`;
+            // 0x API - Dynamic chain support
+            // 0x uses different subdomains for different chains
+            // Mainnet (1): api.0x.org, Polygon (137): polygon.api.0x.org, BSC (56): bsc.api.0x.org
+            let zeroXBaseUrl = '/api/0x';
+            if (chainId === 137) {
+                zeroXBaseUrl = '/api/polygon.0x';
+            } else if (chainId === 56) {
+                zeroXBaseUrl = '/api/bsc.0x';
+            }
+            // For testnets or unsupported chains, 0x might not work - we'll let it fail gracefully
+            
+            const zeroXUrl = `${zeroXBaseUrl}/swap/v1/quote?sellToken=${sellToken}&buyToken=${buyToken}&sellAmount=${amount}${zeroXTakerAddress ? `&takerAddress=${zeroXTakerAddress}` : ''}&skipValidation=true`;
             console.log("0x Requesting:", zeroXUrl);
 
             const zeroXPromise = fetch(zeroXUrl, {
@@ -105,8 +123,12 @@ export const useAggregator = () => {
                 return r.json();
             });
 
-            // 1inch API
-            const oneInchPromise = fetch(`/api/1inch/swap/v6.0/1/swap?src=${sellToken}&dst=${buyToken}&amount=${amount}&from=${oneInchFromAddress}&slippage=${slippage}&disableEstimate=true`, {
+            // 1inch API - Dynamic chain support
+            // 1inch uses chainId directly in the URL path
+            const oneInchUrl = `/api/1inch/swap/v6.0/${chainId}/swap?src=${sellToken}&dst=${buyToken}&amount=${amount}&from=${oneInchFromAddress}&slippage=${slippage}&disableEstimate=true`;
+            console.log("1inch Requesting:", oneInchUrl);
+
+            const oneInchPromise = fetch(oneInchUrl, {
                 headers: { 'Authorization': `Bearer ${ONE_INCH_API_KEY}` }
             }).then(async r => {
                 const data = await r.json();
