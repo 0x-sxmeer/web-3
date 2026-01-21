@@ -36,16 +36,25 @@ export const useAggregator = () => {
             });
 
             const response = await fetch(`/api/lifi/quote?${params.toString()}`);
-            if (!response.ok) throw new Error('Failed to fetch quote');
+            if (!response.ok) {
+                const text = await response.text();
+                try {
+                    const json = JSON.parse(text);
+                    throw new Error(json.message || "Route unavailable");
+                } catch { throw new Error("API Error"); }
+            }
 
             const data = await response.json();
             
+            if (!data.transactionRequest) throw new Error("No route found");
+
             const quote = {
                 provider: data.toolDetails?.name || 'Aggregator',
                 logo: data.toolDetails?.logoURI,
                 output: data.estimate.toAmount,
                 outputDecimals: data.action.toToken.decimals,
-                gasCostUsd: parseFloat(data.estimate.gasCosts?.[0]?.amountUSD || '0'),
+                // SAFETY: Force number to prevent .toFixed crashes if API returns string
+                gasCostUsd: parseFloat(data.estimate.gasCosts?.[0]?.amountUSD || 0),
                 netValueUsd: parseFloat(data.estimate.toAmountUSD || 0),
                 transactionRequest: data.transactionRequest, 
                 approvalAddress: data.estimate.approvalAddress,
@@ -56,7 +65,7 @@ export const useAggregator = () => {
             setBestQuote(quote);
 
         } catch (err) {
-            setError(err.message || "Route not found");
+            setError(err.message || "No routes found");
         } finally {
             setIsLoading(false);
         }

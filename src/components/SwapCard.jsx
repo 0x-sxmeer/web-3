@@ -1,100 +1,51 @@
 import React, { useState, useEffect } from 'react';
 import { GlowingCard } from './GlowingCard';
-import { ArrowDown, Loader2, Fuel, Zap, Globe } from 'lucide-react';
+import { Fuel, Settings, Wallet, ChevronDown, ArrowDown } from 'lucide-react';
 import { useAggregator } from '../hooks/useAggregator';
 import { useWallet } from '../contexts/WalletContext';
-import TokenSelector from './TokenSelector';
+import CombinedSelector from './CombinedSelector';
 import { ethers } from 'ethers';
-
-// Supported Chains Configuration
-const CHAINS = [
-    { id: 1, name: 'Ethereum', logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png' },
-    { id: 56, name: 'BSC', logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/binance/info/logo.png' },
-    { id: 137, name: 'Polygon', logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/polygon/info/logo.png' },
-    { id: 42161, name: 'Arbitrum', logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/arbitrum/info/logo.png' },
-    { id: 10, name: 'Optimism', logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/optimism/info/logo.png' },
-    { id: 8453, name: 'Base', logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/info/logo.png' },
-];
-
-const ChainSelector = ({ selectedChain, onSelect }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const current = CHAINS.find(c => c.id === selectedChain) || CHAINS[0];
-
-    return (
-        <div style={{ position: 'relative' }}>
-            <button 
-                onClick={() => setIsOpen(!isOpen)}
-                style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '12px', padding: '6px 10px', color: 'white', 
-                    fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', marginBottom: '8px'
-                }}
-            >
-                <img src={current.logo} style={{ width: 16, height: 16, borderRadius: '50%' }} alt={current.name} />
-                {current.name}
-                <ArrowDown size={12} />
-            </button>
-
-            {isOpen && (
-                <>
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setIsOpen(false)} />
-                    <div style={{
-                        position: 'absolute', top: '110%', left: 0, width: '160px',
-                        background: '#1a1b1e', border: '1px solid #333', borderRadius: '12px',
-                        padding: '6px', zIndex: 100, display: 'flex', flexDirection: 'column', gap: '2px'
-                    }}>
-                        {CHAINS.map(chain => (
-                            <div 
-                                key={chain.id}
-                                onClick={() => { onSelect(chain.id); setIsOpen(false); }}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '8px',
-                                    padding: '8px', borderRadius: '8px', cursor: 'pointer',
-                                    background: selectedChain === chain.id ? 'rgba(255,113,32,0.1)' : 'transparent',
-                                    transition: 'background 0.2s'
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = selectedChain === chain.id ? 'rgba(255,113,32,0.1)' : 'transparent'}
-                            >
-                                <img src={chain.logo} style={{ width: 20, height: 20, borderRadius: '50%' }} alt={chain.name} />
-                                <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{chain.name}</span>
-                            </div>
-                        ))}
-                    </div>
-                </>
-            )}
-        </div>
-    );
-};
 
 const SwapCard = () => {
     const { account, balance, connectWallet, signer } = useWallet();
     
-    // Chains
-    const [fromChain, setFromChain] = useState(1); // Default ETH
-    const [toChain, setToChain] = useState(1);     // Default ETH
-
-    // Tokens (Reset when chain changes is handled in TokenSelector usually, but we need to reset here if chain changes)
-    const [sellToken, setSellToken] = useState(null);
-    const [buyToken, setBuyToken] = useState(null);
-
-    // Reset tokens when chain changes to avoid "ETH on Polygon" errors
-    useEffect(() => {
-        setSellToken(null); 
-    }, [fromChain]);
-
-    useEffect(() => {
-        setBuyToken(null);
-    }, [toChain]);
-
-    const [fromAmount, setFromAmount] = useState('1');
-    const [toAmount, setToAmount] = useState('0.00');
+    // State
+    const [fromChain, setFromChain] = useState({ id: 1, name: 'Ethereum', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/ethereum.svg' });
+    const [toChain, setToChain] = useState({ id: 10, name: 'Optimism', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/optimism.svg' });
+    const [sellToken, setSellToken] = useState({ symbol: 'ETH', name: 'Ethereum', address: '0x0000000000000000000000000000000000000000', decimals: 18, logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/ethereum.svg' });
+    const [buyToken, setBuyToken] = useState({ symbol: 'USDC', name: 'USD Coin', address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6, logoURI: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' });
+    const [fromAmount, setFromAmount] = useState('');
+    const [toAmount, setToAmount] = useState('');
     const [swapStatus, setSwapStatus] = useState('idle');
+
+    // Modal State
+    const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+    const [selectorMode, setSelectorMode] = useState('from'); // 'from' or 'to'
 
     const { getQuotes, bestQuote, isLoading, error } = useAggregator();
 
-    // Fetch quotes
+    // Handlers for Opening Selector
+    const openFromSelector = () => {
+        setSelectorMode('from');
+        setIsSelectorOpen(true);
+    };
+    
+    const openToSelector = () => {
+        setSelectorMode('to');
+        setIsSelectorOpen(true);
+    };
+
+    const handleSelection = (chain, token) => {
+        if (selectorMode === 'from') {
+            setFromChain(chain);
+            setSellToken(token);
+        } else {
+            setToChain(chain);
+            setBuyToken(token);
+        }
+    };
+
+    // --- Basic Fetch Logic (Same as before) ---
     useEffect(() => {
         const timer = setTimeout(() => {
             if (!fromAmount || parseFloat(fromAmount) === 0 || !sellToken || !buyToken) return;
@@ -105,209 +56,263 @@ const SwapCard = () => {
                     buyToken: buyToken.address,
                     amount: amountWei,
                     userAddress: account,
-                    fromChain: fromChain,
-                    toChain: toChain
+                    fromChain: fromChain.id,
+                    toChain: toChain.id
                 });
-            } catch (e) {
-                console.error("Quote Error:", e);
-            }
+            } catch (e) { }
         }, 600);
         return () => clearTimeout(timer);
-    }, [fromAmount, sellToken, buyToken, account, fromChain, toChain]);
+    }, [fromAmount, sellToken, buyToken, fromChain, toChain, account]);
 
-    // Update UI output
     useEffect(() => {
-        if (bestQuote) {
-            const formatted = ethers.formatUnits(bestQuote.output, bestQuote.outputDecimals);
-            setToAmount(parseFloat(formatted).toFixed(6));
+        if (bestQuote && buyToken) {
+            const formatted = ethers.formatUnits(bestQuote.output, buyToken.decimals);
+            setToAmount(parseFloat(formatted).toFixed(4));
         } else {
-            setToAmount('0.00');
+            setToAmount('');
         }
-    }, [bestQuote]);
+    }, [bestQuote, buyToken]);
 
     const executeSwap = async () => {
         if (!account) return connectWallet();
         if (!bestQuote) return;
-
         try {
             setSwapStatus('initiating');
             let activeSigner = signer;
-            
-            // 1. Force Chain Switch to Source Chain
             const currentChain = Number((await signer.provider.getNetwork()).chainId);
-            if (currentChain !== fromChain) {
+            if (currentChain !== fromChain.id) {
                 try {
                     await window.ethereum.request({
                         method: 'wallet_switchEthereumChain',
-                        params: [{ chainId: '0x' + fromChain.toString(16) }],
+                        params: [{ chainId: '0x' + fromChain.id.toString(16) }],
                     });
-                    // Re-init signer after switch
                     const newProvider = new ethers.BrowserProvider(window.ethereum);
                     activeSigner = await newProvider.getSigner();
                 } catch (e) {
-                    alert("Please switch network in your wallet.");
+                    alert(`Please switch network to ${fromChain.name}.`);
                     setSwapStatus('idle');
                     return;
                 }
             }
-
-            // 2. Approve Token (if not Native)
             const isNative = sellToken.address === '0x0000000000000000000000000000000000000000';
             if (bestQuote.approvalAddress && !isNative) {
-                const tokenContract = new ethers.Contract(
-                    sellToken.address, 
-                    ["function allowance(address,address) view returns (uint256)", "function approve(address,uint256) returns (bool)"], 
-                    activeSigner
-                );
+                const tokenContract = new ethers.Contract(sellToken.address, ["function allowance(address,address) view returns (uint256)", "function approve(address,uint256) returns (bool)"], activeSigner);
                 const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals);
                 const allowance = await tokenContract.allowance(account, bestQuote.approvalAddress);
-                
                 if (allowance < amountWei) {
                     setSwapStatus('approving');
                     const tx = await tokenContract.approve(bestQuote.approvalAddress, amountWei);
                     await tx.wait();
                 }
             }
-
-            // 3. Execute Transaction
             setSwapStatus('swapping');
             const txData = bestQuote.transactionRequest;
-            
-            // FIX: Ethers v6 throws if 'from' is present in signer.sendTransaction
-            // We strip 'from', 'gas', and 'gasLimit' to reconstruct them safely
             const { from, gas, gasLimit, ...cleanTx } = txData;
-
-            // Safe BigInt Parsing
             const val = txData.value ? BigInt(txData.value) : 0n;
-            
-            // Gas Limit with Buffer
-            let limit = 500000n; // Fallback
-            const apiGas = gasLimit || gas;
-            if (apiGas) {
-                limit = (BigInt(apiGas) * 125n) / 100n; // +25% buffer
-            }
-
-            const finalTx = {
-                ...cleanTx,
-                value: val,
-                gasLimit: limit
-            };
-
-            const tx = await activeSigner.sendTransaction(finalTx);
+            let limit = 500000n;
+            if (gasLimit) limit = (BigInt(gasLimit) * 125n) / 100n;
+            const tx = await activeSigner.sendTransaction({ ...cleanTx, value: val, gasLimit: limit });
             await tx.wait();
-            
             setSwapStatus('idle');
-            alert(`Swap Successful! Hash: ${tx.hash}`);
-            setFromAmount('0');
-
+            alert(`Success! Tx: ${tx.hash}`);
+            setFromAmount('');
         } catch (err) {
             setSwapStatus('idle');
-            // Extract readable error
-            const msg = err.info?.error?.message || err.shortMessage || err.message;
-            alert(`Transaction Failed: ${msg}`);
+            alert(`Error: ${err.message}`);
         }
     };
 
+    // Helper for Asset Rows
+    const AssetRow = ({ label, chain, token, onClick, amount, isLoading }) => (
+        <div 
+            onClick={onClick}
+            style={{
+                background: '#131313', borderRadius: '16px', padding: '16px',
+                border: '1px solid #1f1f1f', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '16px',
+                transition: 'background 0.2s',
+                minHeight: '80px'
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+            onMouseLeave={e => e.currentTarget.style.background = '#131313'}
+        >
+            {/* Left Icon Stack */}
+            <div style={{ position: 'relative', width: 44, height: 44 }}>
+                <img src={token?.logoURI} style={{ width: 44, height: 44, borderRadius: '50%' }} alt="" onError={e => e.target.src = 'https://etherscan.io/images/main/empty-token.png'} />
+                <img src={chain.logoURI} style={{ width: 18, height: 18, borderRadius: '50%', position: 'absolute', bottom: -2, right: -2, border: '2px solid #131313' }} alt="" />
+            </div>
+
+            {/* Middle Info */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '0.8rem', color: '#888', fontWeight: 600 }}>{label}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'white' }}>{token?.symbol}</span>
+                    <span style={{ fontSize: '0.9rem', color: '#555' }}>on {chain.name}</span>
+                </div>
+            </div>
+
+            {/* Right Amount Display */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                 {amount && (
+                    <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontSize: '1.2rem', fontWeight: 700, color: isLoading ? '#888' : 'white' }}>
+                            {isLoading ? '...' : amount}
+                        </span>
+                    </div>
+                )}
+                <ChevronDown size={20} color="#666" />
+            </div>
+        </div>
+    );
+
     return (
-        <div style={{ maxWidth: '480px', width: '100%', margin: '0 auto' }}>
+        <div style={{ maxWidth: '440px', width: '100%', margin: '0 auto', fontFamily: '"Inter", sans-serif' }}>
             <GlowingCard spread={80} inactiveZone={0.01} glowColor="#ff7120">
-                <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 600 }}>Swap</h2>
-                        {/* Optional: Add slippage settings icon here */}
-                    </div>
+                <div style={{ 
+                    padding: '8px', background: '#0a0a0a', 
+                    borderRadius: '24px', border: '1px solid #222',
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
+                }}>
+                    <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                         {/* Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '0 4px' }}>
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Exchange</h2>
+                            <Settings size={20} color="#666" style={{cursor:'pointer'}} />
+                        </div>
 
-                    {/* FROM SECTION */}
-                    <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '1rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                            <ChainSelector selectedChain={fromChain} onSelect={setFromChain} />
-                            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Balance: {balance}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <input 
-                                type="number" 
-                                value={fromAmount} 
-                                onChange={(e) => setFromAmount(e.target.value)} 
-                                placeholder="0"
-                                style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '2rem', width: '60%', outline: 'none' }} 
-                            />
-                            <TokenSelector 
-                                selectedToken={sellToken} 
-                                onSelect={setSellToken} 
-                                chainId={fromChain} 
-                            />
-                        </div>
-                    </div>
+                        {/* ROW 1: FROM */}
+                        <AssetRow label="From" chain={fromChain} token={sellToken} onClick={openFromSelector} />
 
-                    <div style={{ display: 'flex', justifyContent: 'center', margin: '-1rem 0', zIndex: 10 }}>
-                        <div 
-                            onClick={() => {
-                                // Swap Chains and Tokens
-                                const tempChain = fromChain; setFromChain(toChain); setToChain(tempChain);
-                                const tempToken = sellToken; setSellToken(buyToken); setBuyToken(tempToken);
-                            }}
-                            style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '0.8rem', padding: '0.5rem', cursor: 'pointer', transition: 'transform 0.2s' }}
-                            onMouseDown={e => e.currentTarget.style.transform = 'scale(0.9)'}
-                            onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
-                        >
-                            <ArrowDown size={20} color="var(--text-muted)" />
+                        {/* Switcher */}
+                        <div style={{ display: 'flex', justifyContent: 'center', margin: '-14px 0', zIndex: 10 }}>
+                             <div 
+                                onClick={() => { const c = fromChain; setFromChain(toChain); setToChain(c); const t = sellToken; setSellToken(buyToken); setBuyToken(t); }}
+                                style={{
+                                    background: '#0a0a0a', border: '4px solid #0a0a0a', borderRadius: '12px',
+                                    width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <div style={{ background: '#1f1f1f', borderRadius: '8px', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <ArrowDown size={18} color="#888" />
+                                </div>
+                            </div>
                         </div>
-                    </div>
 
-                    {/* TO SECTION */}
-                    <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '1rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                            <ChainSelector selectedChain={toChain} onSelect={setToChain} />
-                            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>You receive</span>
-                        </div>
-                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                             {isLoading ? <Loader2 className="animate-spin" color="#ff7120" /> : 
+                        {/* ROW 2: TO */}
+                        <AssetRow 
+                            label="To" 
+                            chain={toChain} 
+                            token={buyToken} 
+                            onClick={openToSelector} 
+                        />
+
+                        {/* ROUTE DETAILS (Aggregator, Output, Gas) */}
+                        {bestQuote && (
+                            <div style={{ 
+                                margin: '8px 4px 4px 4px', 
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                fontSize: '0.85rem'
+                            }}>
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <span style={{ color: '#888', fontSize: '0.75rem' }}>Receive</span>
+                                    <span style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>
+                                        {toAmount} {buyToken?.symbol}
+                                    </span>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255, 113, 32, 0.1)', padding: '4px 8px', borderRadius: '8px', border: '1px solid rgba(255, 113, 32, 0.2)' }}>
+                                    <span style={{ color: '#ff7120', fontWeight: 600 }}>{bestQuote.provider}</span>
+                                    <div style={{ width: 1, height: 12, background: 'rgba(255, 113, 32, 0.3)' }}></div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ff7120' }}>
+                                        <Fuel size={12} />
+                                        <span>${Number(bestQuote.gasCostUsd).toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ROW 3: SEND INPUT */}
+                        <div style={{
+                            background: '#131313', borderRadius: '16px', padding: '16px',
+                            border: '1px solid #1f1f1f', marginTop: '4px'
+                        }}>
+                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '0.8rem', color: '#888', fontWeight: 600 }}>Send Amount</span>
+                                {balance && <span style={{ fontSize: '0.8rem', color: '#666' }}>Max: {parseFloat(balance).toFixed(4)}</span>}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <img src={sellToken?.logoURI} style={{ width: 32, height: 32, borderRadius: '50%' }} alt="" onError={e => e.target.src = 'https://etherscan.io/images/main/empty-token.png'} />
                                 <input 
-                                    type="text" 
-                                    value={toAmount} 
-                                    readOnly 
-                                    style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '2rem', width: '60%', outline: 'none' }} 
+                                    type="number" 
+                                    value={fromAmount}
+                                    onChange={e => setFromAmount(e.target.value)}
+                                    placeholder="0"
+                                    style={{
+                                        background: 'transparent', border: 'none', color: 'white',
+                                        fontSize: '2rem', fontWeight: 600, outline: 'none', width: '100%',
+                                        fontFamily: 'inherit'
+                                    }}
                                 />
-                             }
-                            <TokenSelector 
-                                selectedToken={buyToken} 
-                                onSelect={setBuyToken} 
-                                chainId={toChain} 
-                            />
+                            </div>
+                            <div style={{ textAlign: 'right', fontSize: '0.85rem', color: '#555', marginTop: '4px' }}>
+                                ~ ${(parseFloat(fromAmount || 0) * (parseFloat(sellToken?.priceUSD || 0))).toFixed(2)}
+                            </div>
                         </div>
+
+                        {/* Connect Wallet / Action */}
+                        <div style={{ marginTop: '8px' }}>
+                             {account ? (
+                                <button 
+                                    onClick={executeSwap}
+                                    disabled={isLoading || swapStatus !== 'idle' || !bestQuote}
+                                    style={{
+                                        width: '100%',
+                                        background: (swapStatus !== 'idle' || !bestQuote) ? '#1f1f1f' : 'linear-gradient(90deg, #FF7120 0%, #FF4500 100%)',
+                                        color: (swapStatus !== 'idle' || !bestQuote) ? '#555' : 'white',
+                                        border: 'none', borderRadius: '16px', padding: '16px',
+                                        fontSize: '1.2rem', fontWeight: 700,
+                                        cursor: (swapStatus !== 'idle' || !bestQuote) ? 'not-allowed' : 'pointer',
+                                    }}
+                                >
+                                    {swapStatus === 'idle' ? (bestQuote ? 'Swap' : 'Enter Amount') : swapStatus.toUpperCase()}
+                                </button>
+                             ) : (
+                                 <button 
+                                    onClick={connectWallet}
+                                    style={{
+                                        width: '100%', background: '#3f1a94', color: 'white', // Explicit Purple from user reference image 2
+                                        border: 'none', borderRadius: '16px', padding: '16px',
+                                        fontSize: '1.1rem', fontWeight: 700, cursor: 'pointer',
+                                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                                    }}
+                                >
+                                    <Wallet size={20} />
+                                    Connect Wallet
+                                </button>
+                             )}
+                        </div>
+
+                        {/* Best Route Info */}
+                         {bestQuote && (
+                            <div style={{ marginTop: '12px', padding: '0 8px', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#666' }}>
+                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Fuel size={12} /> ${Number(bestQuote.gasCostUsd).toFixed(2)}</div>
+                                 <div style={{ color: '#ff7120' }}>Best via {bestQuote.provider}</div>
+                            </div>
+                        )}
                     </div>
-
-                    {bestQuote && (
-                        <div style={{ padding: '1rem', background: 'rgba(255,113,32,0.1)', borderRadius: '0.8rem', border: '1px solid rgba(255,113,32,0.3)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px' }}>
-                                <span style={{display:'flex', alignItems:'center', gap:'6px'}}><Zap size={14} fill="currentColor" /> via <b>{bestQuote.provider}</b></span>
-                                <span style={{ fontWeight: 'bold', color: '#ff7120' }}>Best Route</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                <span style={{display:'flex', alignItems:'center', gap:'4px'}}><Fuel size={12}/> Est. Fees</span>
-                                <span>${Number(bestQuote.gasCostUsd || 0).toFixed(2)}</span>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {error && <div style={{ padding: '1rem', background: 'rgba(255,0,0,0.1)', borderRadius: '0.8rem', color: '#ff4d4d', textAlign: 'center', fontSize: '0.9rem' }}>{error}</div>}
-
-                    <button 
-                        onClick={executeSwap} 
-                        disabled={isLoading || swapStatus !== 'idle' || !bestQuote} 
-                        style={{ 
-                            width: '100%', 
-                            background: (swapStatus !== 'idle' || !bestQuote) ? '#333' : 'var(--accent-color)', 
-                            border: 'none', padding: '1.2rem', borderRadius: '1rem', 
-                            color: 'white', fontWeight: 700, fontSize: '1rem', 
-                            cursor: (swapStatus !== 'idle' || !bestQuote) ? 'not-allowed' : 'pointer', 
-                            opacity: (swapStatus !== 'idle' || !bestQuote) ? 0.7 : 1 
-                        }}
-                    >
-                         {swapStatus === 'idle' ? (account ? 'SWAP NOW' : 'CONNECT WALLET') : swapStatus.toUpperCase() + '...'}
-                    </button>
                 </div>
             </GlowingCard>
+
+            {/* THE NEW COMBINED MODAL */}
+            <CombinedSelector 
+                isOpen={isSelectorOpen} 
+                onClose={() => setIsSelectorOpen(false)}
+                title={selectorMode === 'from' ? 'Exchange from' : 'Exchange to'}
+                selectedChain={selectorMode === 'from' ? fromChain : toChain}
+                selectedToken={selectorMode === 'from' ? sellToken : buyToken}
+                onSelect={handleSelection}
+            />
         </div>
     );
 };
