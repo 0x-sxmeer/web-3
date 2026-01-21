@@ -11,14 +11,13 @@ const SwapCard = () => {
     const { account, balance, connectWallet, signer, chainId } = useWallet();
     const [mockMode, setMockMode] = useState(false);
     
-    // Chains (Default 1 for Eth Mainnet)
     const [fromChain, setFromChain] = useState(1);
     const [toChain, setToChain] = useState(1);
 
-    // Tokens
+    // Initial Tokens (Using 0x000... for safety, but TokenSelector might return 0xeee...)
     const [sellToken, setSellToken] = useState({ 
         symbol: 'ETH', 
-        address: '0x0000000000000000000000000000000000000000', // Jumper uses 0x0 for native ETH
+        address: '0x0000000000000000000000000000000000000000', 
         decimals: 18,
         logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png' 
     });
@@ -59,7 +58,7 @@ const SwapCard = () => {
         return () => clearTimeout(timer);
     }, [fromAmount, sellToken, buyToken, account, fromChain, toChain]);
 
-    // --- Update UI with Quote Results ---
+    // --- Update UI ---
     useEffect(() => {
         if (bestQuote) {
             const formatted = ethers.formatUnits(bestQuote.output, bestQuote.outputDecimals);
@@ -69,12 +68,11 @@ const SwapCard = () => {
         }
     }, [bestQuote]);
 
-    // --- Execution Logic (Fixed) ---
+    // --- Execution Logic ---
     const executeSwap = async () => {
         if (!account) return connectWallet();
         if (!bestQuote && !mockMode) return;
 
-        // 1. Mock Mode Check
         if (mockMode) {
             setSwapStatus('swapping');
             await new Promise(r => setTimeout(r, 2000));
@@ -86,30 +84,37 @@ const SwapCard = () => {
         try {
             setSwapStatus('initiating');
 
-            // 2. Network Switch
+            // 1. Network Switch & Signer Setup
+            let activeSigner = signer;
             const currentChain = Number((await signer.provider.getNetwork()).chainId);
+            
             if (currentChain !== fromChain) {
                 try {
                     await window.ethereum.request({
                         method: 'wallet_switchEthereumChain',
                         params: [{ chainId: '0x' + fromChain.toString(16) }],
                     });
-                    // Wait a moment for the signer to update
-                    await new Promise(r => setTimeout(r, 1000));
+                    // Refresh signer after switch
+                    const newProvider = new ethers.BrowserProvider(window.ethereum);
+                    activeSigner = await newProvider.getSigner();
                 } catch (switchError) {
-                    alert("Please switch your wallet network to Ethereum Mainnet to continue.");
+                    alert("Please switch your wallet network to Ethereum Mainnet.");
                     setSwapStatus('idle');
                     return;
                 }
             }
 
-            // 3. Approval Flow
-            // We check the specific "approvalAddress" returned by LI.FI API
-            if (bestQuote.approvalAddress && sellToken.symbol !== 'ETH') {
+            // 2. Approval Flow
+            // Check specifically for non-native tokens (native ETH doesn't need approval)
+            // We check against both 0x000... and 0xeee... to be safe
+            const isNative = sellToken.address === '0x0000000000000000000000000000000000000000' || 
+                             sellToken.address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+
+            if (bestQuote.approvalAddress && !isNative) {
                 const tokenContract = new ethers.Contract(
                     sellToken.address, 
                     ["function allowance(address,address) view returns (uint256)", "function approve(address,uint256) returns (bool)"], 
-                    signer
+                    activeSigner
                 );
                 
                 const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals);
@@ -119,25 +124,25 @@ const SwapCard = () => {
                     setSwapStatus('approving');
                     const tx = await tokenContract.approve(bestQuote.approvalAddress, amountWei);
                     console.log("Approval Tx:", tx.hash);
-                    await tx.wait();
+                    await tx.wait(); 
                 }
             }
 
-            // 4. Execution Flow
+            // 3. Execution Flow
             setSwapStatus('swapping');
 
-            // Construct the transaction using LI.FI's exact parameters
             const txRequest = {
                 to: bestQuote.transactionRequest.to,
                 data: bestQuote.transactionRequest.data,
-                value: bestQuote.transactionRequest.value, // Important for ETH swaps
-                // We let the wallet estimate gas, or use LI.FI's estimate with a buffer
-                // gasLimit: BigInt(bestQuote.transactionRequest.gasLimit) * 120n / 100n 
+                value: bestQuote.transactionRequest.value, 
+                from: account,
+                // Add buffer to gas limit
+                gasLimit: BigInt(bestQuote.transactionRequest.gasLimit) * 120n / 100n 
             };
 
-            console.log("Sending Transaction:", txRequest);
-            const tx = await signer.sendTransaction(txRequest);
-            console.log("Swap Tx Hash:", tx.hash);
+            console.log("Sending Swap Tx:", txRequest);
+            const tx = await activeSigner.sendTransaction(txRequest);
+            console.log("Tx Hash:", tx.hash);
             
             await tx.wait();
             
@@ -153,6 +158,7 @@ const SwapCard = () => {
         }
     };
 
+    // ... Return JSX (Same as before) ...
     return (
         <div style={{ maxWidth: '480px', width: '100%', margin: '0 auto' }}>
             <GlowingCard spread={80} inactiveZone={0.01} glowColor="#ff7120">

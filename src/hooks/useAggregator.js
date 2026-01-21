@@ -7,6 +7,15 @@ export const useAggregator = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
 
+    // Helper: LI.FI expects 0x000... for native ETH, but 1inch returns 0xeee...
+    const normalizeToken = (address) => {
+        if (!address) return '0x0000000000000000000000000000000000000000';
+        if (address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
+            return '0x0000000000000000000000000000000000000000';
+        }
+        return address;
+    };
+
     const getQuotes = useCallback(async ({ 
         sellToken, 
         buyToken, 
@@ -26,18 +35,18 @@ export const useAggregator = () => {
         try {
             // Jumper/LI.FI Quote Endpoint
             const params = new URLSearchParams({
-                fromChain: fromChain || 1, // Default Ethereum
-                toChain: toChain || 1,     // Default Ethereum
-                fromToken: sellToken,
-                toToken: buyToken,
-                fromAmount: amount, // Must be in WEI
+                fromChain: fromChain || 1, 
+                toChain: toChain || 1,     
+                fromToken: normalizeToken(sellToken), // <--- FIX APPLIED HERE
+                toToken: normalizeToken(buyToken),    // <--- FIX APPLIED HERE
+                fromAmount: amount, 
                 fromAddress: userAddress || '0x0000000000000000000000000000000000000000',
                 slippage: slippage,
                 allowBridges: 'true', 
                 allowExchanges: 'true'
             });
 
-            console.log("⚡ Fetching Jumper/LI.FI Quotes...");
+            console.log("⚡ Fetching LI.FI Quotes:", params.toString());
 
             const response = await fetch(`/api/lifi/quote?${params.toString()}`);
             
@@ -48,7 +57,6 @@ export const useAggregator = () => {
 
             const data = await response.json();
             
-            // Normalize LI.FI response
             const quote = {
                 provider: data.toolDetails?.name || 'Aggregator',
                 logo: data.toolDetails?.logoURI,
@@ -56,12 +64,10 @@ export const useAggregator = () => {
                 outputDecimals: data.action.toToken.decimals,
                 gasCostUsd: data.estimate.gasCosts?.[0]?.amountUSD || 0,
                 netValueUsd: parseFloat(data.estimate.toAmountUSD || 0),
-                // CRITICAL: The exact transaction object for execution
                 transactionRequest: data.transactionRequest, 
-                // CRITICAL: Who we need to approve (Spender)
                 approvalAddress: data.estimate.approvalAddress,
                 isBest: true,
-                raw: data
+                raw: data 
             };
 
             setQuotes([quote]);
