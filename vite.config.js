@@ -6,29 +6,14 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // Ethereum 0x
-      '/api/0x': {
-        target: 'https://api.0x.org',
+      // Proxy for LI.FI (Jumper's Engine)
+      '/api/lifi': {
+        target: 'https://li.quest/v1',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/0x/, '')
-      },
-      // ADDED: BSC 0x (Critical for your issue)
-      '/api/bsc.0x': {
-        target: 'https://bsc.api.0x.org',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/bsc.0x/, '')
-      },
-      // ADDED: Polygon 0x
-      '/api/polygon.0x': {
-        target: 'https://polygon.api.0x.org',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/polygon.0x/, '')
-      },
-      // 1inch
-      '/api/1inch': {
-        target: 'https://api.1inch.dev',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/1inch/, '')
+        rewrite: (path) => path.replace(/^\/api\/lifi/, ''),
+        headers: {
+          'x-lifi-api-key': '36490c42-e387-4912-9fba-9ee2eec448f6.f2a1815d-8e9e-4988-a212-1abf9e40c025'
+        }
       }
     }
   }
