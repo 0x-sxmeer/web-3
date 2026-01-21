@@ -25,21 +25,19 @@ export const useAggregator = () => {
 
         try {
             // Jumper/LI.FI Quote Endpoint
-            // Docs: https://apidocs.li.fi/reference/get_quote
             const params = new URLSearchParams({
                 fromChain: fromChain || 1, // Default Ethereum
-                toChain: toChain || 1,     // Default Ethereum (Same chain swap)
+                toChain: toChain || 1,     // Default Ethereum
                 fromToken: sellToken,
                 toToken: buyToken,
-                fromAmount: amount, // Must be in WEI (raw units)
+                fromAmount: amount, // Must be in WEI
                 fromAddress: userAddress || '0x0000000000000000000000000000000000000000',
                 slippage: slippage,
-                // We ask for multiple bridges/exchanges to compare
                 allowBridges: 'true', 
                 allowExchanges: 'true'
             });
 
-            console.log("⚡ Fetching Jumper/LI.FI Quotes:", params.toString());
+            console.log("⚡ Fetching Jumper/LI.FI Quotes...");
 
             const response = await fetch(`/api/lifi/quote?${params.toString()}`);
             
@@ -50,11 +48,7 @@ export const useAggregator = () => {
 
             const data = await response.json();
             
-            // Normalize LI.FI response to your UI structure
-            // LI.FI returns a single "best" route in /quote, but we can treat it as our primary
-            // To get a comparison list like Jumper, you would typically use /routes endpoint
-            // For now, we wrap the result in an array to match your UI
-            
+            // Normalize LI.FI response
             const quote = {
                 provider: data.toolDetails?.name || 'Aggregator',
                 logo: data.toolDetails?.logoURI,
@@ -62,12 +56,12 @@ export const useAggregator = () => {
                 outputDecimals: data.action.toToken.decimals,
                 gasCostUsd: data.estimate.gasCosts?.[0]?.amountUSD || 0,
                 netValueUsd: parseFloat(data.estimate.toAmountUSD || 0),
-                // CRITICAL: The transaction object for execution
+                // CRITICAL: The exact transaction object for execution
                 transactionRequest: data.transactionRequest, 
-                // CRITICAL: Approval data
+                // CRITICAL: Who we need to approve (Spender)
                 approvalAddress: data.estimate.approvalAddress,
                 isBest: true,
-                raw: data // Keep raw data for debugging
+                raw: data
             };
 
             setQuotes([quote]);

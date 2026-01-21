@@ -11,7 +11,7 @@ const SwapCard = () => {
     const { account, balance, connectWallet, signer, chainId } = useWallet();
     const [mockMode, setMockMode] = useState(false);
     
-    // Chains (Hardcoded to Ethereum for now, but ready for Jumper cross-chain)
+    // Chains (Default 1 for Eth Mainnet)
     const [fromChain, setFromChain] = useState(1);
     const [toChain, setToChain] = useState(1);
 
@@ -41,16 +41,20 @@ const SwapCard = () => {
         const timer = setTimeout(() => {
             if (!fromAmount || parseFloat(fromAmount) === 0) return;
             
-            const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals).toString();
-            
-            getQuotes({
-                sellToken: sellToken.address,
-                buyToken: buyToken.address,
-                amount: amountWei,
-                userAddress: account,
-                fromChain: fromChain,
-                toChain: toChain
-            });
+            try {
+                const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals).toString();
+                
+                getQuotes({
+                    sellToken: sellToken.address,
+                    buyToken: buyToken.address,
+                    amount: amountWei,
+                    userAddress: account,
+                    fromChain: fromChain,
+                    toChain: toChain
+                });
+            } catch (e) {
+                console.error("Invalid amount input");
+            }
         }, 600);
         return () => clearTimeout(timer);
     }, [fromAmount, sellToken, buyToken, account, fromChain, toChain]);
@@ -65,7 +69,7 @@ const SwapCard = () => {
         }
     }, [bestQuote]);
 
-    // --- Execution Logic (Fixing the Errors) ---
+    // --- Execution Logic (Fixed) ---
     const executeSwap = async () => {
         if (!account) return connectWallet();
         if (!bestQuote && !mockMode) return;
@@ -83,7 +87,6 @@ const SwapCard = () => {
             setSwapStatus('initiating');
 
             // 2. Network Switch
-            // Ensure wallet is on the 'fromChain'
             const currentChain = Number((await signer.provider.getNetwork()).chainId);
             if (currentChain !== fromChain) {
                 try {
@@ -91,25 +94,22 @@ const SwapCard = () => {
                         method: 'wallet_switchEthereumChain',
                         params: [{ chainId: '0x' + fromChain.toString(16) }],
                     });
-                    // Update signer after switch
-                    const newProvider = new ethers.BrowserProvider(window.ethereum);
-                    var activeSigner = await newProvider.getSigner();
+                    // Wait a moment for the signer to update
+                    await new Promise(r => setTimeout(r, 1000));
                 } catch (switchError) {
-                    alert("Please switch your wallet network to continue.");
+                    alert("Please switch your wallet network to Ethereum Mainnet to continue.");
                     setSwapStatus('idle');
                     return;
                 }
-            } else {
-                var activeSigner = signer;
             }
 
-            // 3. Approval Flow (Corrected)
-            // Jumper/Li.Fi tells us exactly who to approve in `approvalAddress`
+            // 3. Approval Flow
+            // We check the specific "approvalAddress" returned by LI.FI API
             if (bestQuote.approvalAddress && sellToken.symbol !== 'ETH') {
                 const tokenContract = new ethers.Contract(
                     sellToken.address, 
                     ["function allowance(address,address) view returns (uint256)", "function approve(address,uint256) returns (bool)"], 
-                    activeSigner
+                    signer
                 );
                 
                 const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals);
@@ -118,38 +118,38 @@ const SwapCard = () => {
                 if (currentAllowance < amountWei) {
                     setSwapStatus('approving');
                     const tx = await tokenContract.approve(bestQuote.approvalAddress, amountWei);
+                    console.log("Approval Tx:", tx.hash);
                     await tx.wait();
                 }
             }
 
-            // 4. Execution Flow (The Fix)
-            // Instead of constructing the TX manually, we use the `transactionRequest` 
-            // provided directly by the API. This eliminates errors with gas/data formatting.
+            // 4. Execution Flow
             setSwapStatus('swapping');
 
+            // Construct the transaction using LI.FI's exact parameters
             const txRequest = {
                 to: bestQuote.transactionRequest.to,
                 data: bestQuote.transactionRequest.data,
-                value: bestQuote.transactionRequest.value, // Handles ETH value correctly
-                from: account, // Ensure 'from' is set
-                // Li.Fi gives a recommended gas limit, we add a tiny buffer
-                gasLimit: BigInt(bestQuote.transactionRequest.gasLimit) * 110n / 100n 
+                value: bestQuote.transactionRequest.value, // Important for ETH swaps
+                // We let the wallet estimate gas, or use LI.FI's estimate with a buffer
+                // gasLimit: BigInt(bestQuote.transactionRequest.gasLimit) * 120n / 100n 
             };
 
-            const tx = await activeSigner.sendTransaction(txRequest);
-            console.log("Tx Hash:", tx.hash);
+            console.log("Sending Transaction:", txRequest);
+            const tx = await signer.sendTransaction(txRequest);
+            console.log("Swap Tx Hash:", tx.hash);
             
             await tx.wait();
+            
             setSwapStatus('idle');
-            alert(`Swap Successful! \nHash: ${tx.hash}`);
-            setFromAmount('0'); // Reset
+            alert(`✅ Swap Successful! \nHash: ${tx.hash}`);
+            setFromAmount('0');
 
         } catch (err) {
             console.error("Execution Error:", err);
             setSwapStatus('idle');
-            // Friendly error extraction
             const msg = err.reason || err.data?.message || err.message;
-            alert(`Swap Failed: ${msg.includes('user rejected') ? 'User rejected transaction' : msg}`);
+            alert(`Swap Failed: ${msg}`);
         }
     };
 
@@ -189,8 +189,7 @@ const SwapCard = () => {
                                 onChange={(e) => setFromAmount(e.target.value)}
                                 style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '2rem', fontFamily: 'var(--font-display)', width: '60%', outline: 'none' }} 
                             />
-                            {/* Pass mock 'eth' address for LI.FI native token */}
-                            <TokenSelector selectedToken={sellToken} onSelect={setSellToken} />
+                            <TokenSelector selectedToken={sellToken} onSelect={setSellToken} chainId={fromChain} />
                         </div>
                     </div>
 
@@ -217,7 +216,7 @@ const SwapCard = () => {
                                     style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '2rem', fontFamily: 'var(--font-display)', width: '60%', outline: 'none' }} 
                                 />
                             )}
-                            <TokenSelector selectedToken={buyToken} onSelect={setBuyToken} />
+                            <TokenSelector selectedToken={buyToken} onSelect={setBuyToken} chainId={toChain} />
                         </div>
                     </div>
 
@@ -247,14 +246,14 @@ const SwapCard = () => {
                     {/* Swap Button */}
                     <button 
                         onClick={executeSwap}
-                        disabled={isLoading || swapStatus !== 'idle'}
+                        disabled={isLoading || swapStatus !== 'idle' || (!bestQuote && !mockMode)}
                         style={{
                             width: '100%',
-                            background: swapStatus !== 'idle' ? '#333' : 'var(--accent-color)',
+                            background: (swapStatus !== 'idle' || (!bestQuote && !mockMode)) ? '#333' : 'var(--accent-color)',
                             border: 'none', padding: '1.2rem', borderRadius: '1rem',
                             color: 'white', fontWeight: 700, fontSize: '1rem', fontFamily: 'var(--font-display)',
-                            cursor: swapStatus !== 'idle' ? 'not-allowed' : 'pointer',
-                            opacity: swapStatus !== 'idle' ? 0.7 : 1
+                            cursor: (swapStatus !== 'idle' || (!bestQuote && !mockMode)) ? 'not-allowed' : 'pointer',
+                            opacity: (swapStatus !== 'idle' || (!bestQuote && !mockMode)) ? 0.7 : 1
                         }}>
                          {swapStatus === 'idle' ? 'SWAP NOW' : swapStatus.toUpperCase() + '...'}
                     </button>
