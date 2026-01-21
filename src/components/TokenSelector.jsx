@@ -55,15 +55,21 @@ const TokenSelector = ({ selectedToken, onSelect, chainId }) => {
                 }}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {selectedToken.logo ? (
-                        <img src={selectedToken.logo} alt={selectedToken.symbol} 
-                             style={{ width: 24, height: 24, borderRadius: '50%' }} 
-                             onError={(e) => {e.target.style.display='none'}} 
-                        />
+                    {selectedToken ? (
+                        <>
+                            {selectedToken.logo ? (
+                                <img src={selectedToken.logo} alt={selectedToken.symbol} 
+                                     style={{ width: 24, height: 24, borderRadius: '50%' }} 
+                                     onError={(e) => {e.target.style.display='none'}} 
+                                />
+                            ) : (
+                                <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#627EEA' }}></div>
+                            )}
+                            {selectedToken.symbol}
+                        </>
                     ) : (
-                        <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#627EEA' }}></div>
+                        <span>Select Token</span>
                     )}
-                    {selectedToken.symbol} 
                 </div>
                 <ChevronDown size={14} />
             </button>
@@ -101,10 +107,10 @@ const TokenSelector = ({ selectedToken, onSelect, chainId }) => {
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: '10px',
                                     padding: '0.6rem', borderRadius: '0.5rem', cursor: 'pointer',
-                                    background: selectedToken.address === t.address ? 'rgba(255, 113, 32, 0.1)' : 'transparent'
+                                    background: (selectedToken && selectedToken.address === t.address) ? 'rgba(255, 113, 32, 0.1)' : 'transparent'
                                 }}
                                 onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = selectedToken.address === t.address ? 'rgba(255, 113, 32, 0.1)' : 'transparent'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = (selectedToken && selectedToken.address === t.address) ? 'rgba(255, 113, 32, 0.1)' : 'transparent'}
                             >
                                 <img 
                                     src={t.logo} alt={t.symbol} 
