@@ -10,7 +10,23 @@ export const WalletProvider = ({ children }) => {
   const [provider, setProvider] = useState(null);
   const [signer, setSigner] = useState(null);
   const [chainId, setChainId] = useState(null);
+  const [balance, setBalance] = useState('0.00');
   const [isConnecting, setIsConnecting] = useState(false);
+
+  const updateBalance = async (userAddress, userProvider) => {
+    if (userAddress && userProvider) {
+      try {
+        const bal = await userProvider.getBalance(userAddress);
+        const balEth = ethers.formatEther(bal);
+        setBalance(parseFloat(balEth).toFixed(4));
+      } catch (e) {
+        console.error("Failed to fetch balance", e);
+        setBalance('0.00');
+      }
+    } else {
+        setBalance('0.00');
+    }
+  };
 
   const initProvider = async () => {
     if (window.ethereum) {
@@ -28,6 +44,9 @@ export const WalletProvider = ({ children }) => {
             setAccount(_account);
             const network = await _provider.getNetwork();
             setChainId(network.chainId);
+            
+            // Fetch initial balance
+            await updateBalance(_account, _provider);
         }
       } catch (e) {
         console.log("Wallet not connected on init");
@@ -39,13 +58,24 @@ export const WalletProvider = ({ children }) => {
     initProvider();
 
     if (window.ethereum) {
-      window.ethereum.on('accountsChanged', (accounts) => {
+      window.ethereum.on('accountsChanged', async (accounts) => {
         if (accounts.length > 0) {
           setAccount(accounts[0]);
-          initProvider(); // Re-init signer/provider
+          // Re-init signer/provider/balance
+          const _provider = new ethers.BrowserProvider(window.ethereum);
+          setProvider(_provider);
+          const _signer = await _provider.getSigner();
+          setSigner(_signer);
+          
+          const network = await _provider.getNetwork();
+          setChainId(network.chainId);
+
+          await updateBalance(accounts[0], _provider);
+
         } else {
           setAccount(null);
           setSigner(null);
+          setBalance('0.00');
         }
       });
 
@@ -82,6 +112,7 @@ export const WalletProvider = ({ children }) => {
   const disconnectWallet = () => {
     setAccount(null);
     setSigner(null);
+    setBalance('0.00');
     // Note: You can't programmatically disconnect MetaMask, but we clear local state
   };
 
@@ -90,6 +121,8 @@ export const WalletProvider = ({ children }) => {
     provider,
     signer,
     chainId,
+    balance,       // Exported
+    updateBalance, // Exported
     isConnecting,
     connectWallet,
     disconnectWallet

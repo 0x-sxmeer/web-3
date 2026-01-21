@@ -1,77 +1,215 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GlowingCard } from './GlowingCard';
-import { ChevronDown, ArrowDown, Wallet, Loader2 } from 'lucide-react';
+import { ChevronDown, ArrowDown, Wallet, Loader2, RefreshCw, Zap, Fuel } from 'lucide-react';
+import { useAggregator } from '../hooks/useAggregator';
+import { TOKENS } from '../services/web3Service';
+import { ethers } from 'ethers';
+import { useWallet } from '../contexts/WalletContext';
+
+import TokenSelector from './TokenSelector';
 
 const SwapCard = () => {
-    // Standalone Mock State
-    const [account, setAccount] = useState(null);
+    // Core State
+    const { account, balance, connectWallet, signer } = useWallet();
     
+    // Token State
+    const [sellToken, setSellToken] = useState({ 
+        symbol: 'ETH', 
+        address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 
+        decimals: 18,
+        logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png' 
+    });
+    const [buyToken, setBuyToken] = useState({ 
+        symbol: 'USDC', 
+        address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', 
+        decimals: 6,
+        logo: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' 
+    });
+
     const [fromAmount, setFromAmount] = useState('1');
     const [toAmount, setToAmount] = useState('0.00');
     
-    const [isSwapping, setIsSwapping] = useState(false);
-    const [isLoadingQuote, setIsLoadingQuote] = useState(false);
+    // Config State
+    const [gasSpeed, setGasSpeed] = useState('standard'); 
+    const [autoRefresh, setAutoRefresh] = useState(true);
+    const [timeLeft, setTimeLeft] = useState(15);
     
-    // Mock providers data
-    const [providers, setProviders] = useState([
-        { name: 'Uniswap V3', rate: '0.00', fee: '$4.50', best: true },
-        { name: '1inch', rate: '0.00', fee: '$5.20', best: false },
-        { name: 'CowSwap', rate: '0.00', fee: '$0.00', best: false },
-    ]);
+    // Aggregator Hook
+    const { getQuotes, bestQuote, quotes, isLoading, error } = useAggregator();
 
-    // Mock Connect Wallet
-    const connectWallet = () => {
-        setAccount("0x123...abc");
+    // Refresh Timer Logic
+    useEffect(() => {
+        if (!autoRefresh) return;
+        
+        const timer = setInterval(() => {
+            setTimeLeft((prev) => {
+                if (prev <= 1) {
+                    handleFetchQuotes();
+                    return 15;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [autoRefresh, fromAmount, sellToken, buyToken]); // Add token deps
+
+    // Fetch Quotes Wrapper
+    const handleFetchQuotes = () => {
+        if (!fromAmount || parseFloat(fromAmount) === 0) return;
+        
+        try {
+            const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals).toString();
+            console.log("Fetching quotes for:", amountWei);
+            
+            getQuotes({
+                sellToken: sellToken.address, 
+                buyToken: buyToken.address, 
+                amount: amountWei,
+                userAddress: account || '0x0000000000000000000000000000000000000000',
+                buyTokenDecimals: buyToken.decimals // Passing decimals to hook
+            });
+        } catch (e) {
+            console.error("Invalid amount", e);
+        }
     };
 
-    // Simulate Quote Fetching
+    // Trigger fetch on amount change (debounced) or when account connects
     useEffect(() => {
-        const fetchQuote = () => {
-            if (!fromAmount || parseFloat(fromAmount) === 0) {
-                setToAmount("0.00");
-                return;
-            };
-
-            setIsLoadingQuote(true);
-            
-            // Simulate network delay
-            setTimeout(() => {
-                const ethPrice = 2850; // Mock ETH price
-                const val = parseFloat(fromAmount) * ethPrice;
-                const rate = val.toFixed(2);
-                
-                setToAmount(rate);
-                setProviders([
-                    { name: 'Uniswap V3', rate: rate, fee: '~$4.50', best: false },
-                    { name: '1inch', rate: (val * 1.002).toFixed(2), fee: '~$5.20', best: true },
-                    { name: 'CowSwap', rate: (val * 0.998).toFixed(2), fee: '$0.00', best: false },
-                ]);
-                
-                setIsLoadingQuote(false);
-            }, 800);
-        };
-
         const timeoutId = setTimeout(() => {
-            fetchQuote();
-        }, 600); 
-
+            handleFetchQuotes();
+            setTimeLeft(15); // Reset timer
+        }, 600);
         return () => clearTimeout(timeoutId);
-    }, [fromAmount]);
+    }, [fromAmount, sellToken, buyToken, account]); // Added account dependency
+    
+    // UI Selection State
+    const [selectedQuote, setSelectedQuote] = useState(null);
 
-    const handleSwap = () => {
-        if (!account) {
-            connectWallet();
-            return;
+    // Auto-select the best quote when quotes update
+    // Auto-select logic with sticky manual selection
+    useEffect(() => {
+        if (quotes.length > 0 && bestQuote) {
+            if (selectedQuote) {
+                // Try to keep the same provider if available in new quotes
+                const matching = quotes.find(q => q.provider === selectedQuote.provider);
+                if (matching) {
+                    setSelectedQuote(matching);
+                } else {
+                    // Fallback to best if provider no longer available
+                    setSelectedQuote(bestQuote);
+                }
+            } else {
+                // Initial selection
+                setSelectedQuote(bestQuote);
+            }
         }
+    }, [quotes, bestQuote, selectedQuote]);
 
-        setIsSwapping(true);
-        // Simulate Transaction
-        setTimeout(() => {
-            alert("Swap Simulated Successfully!");
-            setIsSwapping(false);
-            setFromAmount("");
-            setToAmount("0.00");
-        }, 2000);
+    // Reset selection on major input changes to allow "Best" to win again
+    useEffect(() => {
+        setSelectedQuote(null);
+    }, [fromAmount, sellToken, buyToken]);
+
+    // Update ToAmount when SELECTED quote changes
+    useEffect(() => {
+        if (selectedQuote) {
+            // Use dynamic decimals
+            const formatted = ethers.formatUnits(selectedQuote.output, buyToken.decimals);
+            setToAmount(parseFloat(formatted).toFixed(4));
+        }
+    }, [selectedQuote, buyToken]); 
+
+
+    const [swapStatus, setSwapStatus] = useState('idle'); // idle, approving, swapping, success
+
+    // Minimal ERC20 ABI for Approvals
+    const ERC20_ABI = [
+        "function allowance(address owner, address spender) view returns (uint256)",
+        "function approve(address spender, uint256 amount) returns (bool)"
+    ];
+
+    const executeSwap = async () => {
+        if (!account || !selectedQuote || !signer) return; // Ensure signer is available
+        setSwapStatus('initiating');
+
+        try {
+            const userAddress = account;
+            
+            // Use selectedQuote for execution
+            const quoteToExecute = selectedQuote;
+            console.log("Executing Quote:", quoteToExecute);
+
+            // 1. APPROVAL CHECK (If selling ERC20)
+            if (sellToken.symbol !== 'ETH') {
+                // Determine Spender
+                let spender = null;
+                if (quoteToExecute.provider === '0x') {
+                    // 0x usually provides allowanceTarget
+                    spender = quoteToExecute.data.allowanceTarget || quoteToExecute.data.to; 
+                } else if (quoteToExecute.provider === '1inch') {
+                    // 1inch swap response puts router in tx.to
+                    spender = quoteToExecute.data.tx?.to;
+                }
+
+                if (!spender) {
+                    throw new Error(`Could not determine approval spender for ${quoteToExecute.provider}`);
+                }
+
+                const tokenContract = new ethers.Contract(sellToken.address, ERC20_ABI, signer);
+                const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals);
+                
+                // Check Allowance
+                const allowance = await tokenContract.allowance(userAddress, spender);
+                
+                if (allowance < amountWei) {
+                    setSwapStatus('approving');
+                    const approveTx = await tokenContract.approve(spender, amountWei);
+                    await approveTx.wait();
+                }
+            }
+
+            // 2. EXECUTE SWAP
+            setSwapStatus('swapping');
+            
+            let txParams = {};
+            if (quoteToExecute.provider === '0x') {
+                txParams = {
+                    to: quoteToExecute.data.to,
+                    data: quoteToExecute.data.data,
+                    value: quoteToExecute.data.value || "0" // Default to 0 if missing
+                };
+            } else if (quoteToExecute.provider === '1inch') {
+                txParams = {
+                    to: quoteToExecute.data.tx.to,
+                    data: quoteToExecute.data.tx.data,
+                    value: quoteToExecute.data.tx.value || "0" // Default to 0 if missing
+                };
+            }
+
+            if (!txParams.to || !txParams.data) {
+                throw new Error(`Invalid Transaction Params: to=${txParams.to}, data=${txParams.data ? 'present' : 'missing'}`);
+            }
+
+            console.log("Sending Transaction:", txParams);
+            const tx = await signer.sendTransaction(txParams);
+            console.log("Transaction Sent:", tx);
+            await tx.wait();
+            console.log("Transaction Mined");
+
+            setSwapStatus('success');
+            alert(`Swap Completed! Tx Hash: ${tx.hash}`);
+            setSwapStatus('idle'); // Reset after success
+            handleFetchQuotes();   // Refresh quotes?
+
+        } catch (err) {
+            console.error("Swap Error:", err);
+            setSwapStatus('idle');
+            // Extract meaningful error message
+            let msg = err.reason || err.message || "Unknown Error";
+            if (msg.includes("user rejected")) msg = "User rejected transaction";
+            alert("Swap Failed: " + msg);
+        }
     };
 
     return (
@@ -83,11 +221,50 @@ const SwapCard = () => {
                 glowColor="#ff7120"
             >
                 <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    
+                    {/* Header with Settings */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 600 }}>Swap</h2>
-                        <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#ff7120', boxShadow: '0 0 10px #ff7120' }}></span>
-                            Best Route Active
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 600 }}>Swap</h2>
+                            {/* Refresh Timer */}
+                            <div 
+                                onClick={() => { setAutoRefresh(!autoRefresh); handleFetchQuotes(); }}
+                                style={{ 
+                                    width: 24, height: 24, 
+                                    borderRadius: '50%', 
+                                    border: `2px solid ${autoRefresh ? 'var(--accent-color)' : '#444'}`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '0.6rem',
+                                    fontWeight: 'bold',
+                                    color: autoRefresh ? 'var(--accent-color)' : '#666',
+                                    cursor: 'pointer',
+                                    position: 'relative'
+                                }}
+                            >
+                                {timeLeft}
+                            </div>
+                        </div>
+
+                        {/* Gas Toggle */}
+                        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '20px', padding: '2px' }}>
+                            {['economy', 'standard', 'fast'].map((speed) => (
+                                <button
+                                    key={speed}
+                                    onClick={() => setGasSpeed(speed)}
+                                    style={{
+                                        background: gasSpeed === speed ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                        border: 'none',
+                                        borderRadius: '16px',
+                                        padding: '4px 8px',
+                                        fontSize: '0.7rem',
+                                        color: gasSpeed === speed ? 'white' : '#888',
+                                        textTransform: 'capitalize'
+                                    }}
+                                >
+                                    {speed === 'fast' && <Zap size={10} style={{marginRight:2}} fill="currentColor"/>}
+                                    {speed}
+                                </button>
+                            ))}
                         </div>
                     </div>
 
@@ -95,7 +272,7 @@ const SwapCard = () => {
                     <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '1rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                             <span>You pay</span>
-                            <span>Balance: {account ? '1.45' : '---'}</span>
+                            <span>Balance: {sellToken.symbol === 'ETH' ? (account ? balance : '---') : '---'}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <input 
@@ -113,24 +290,7 @@ const SwapCard = () => {
                                     outline: 'none'
                                 }} 
                             />
-                            <button style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: '8px', 
-                                background: 'rgba(255,255,255,0.1)', 
-                                border: '1px solid rgba(255,255,255,0.1)', 
-                                borderRadius: '2rem', 
-                                padding: '0.5rem 1rem', 
-                                color: 'white', 
-                                cursor: 'pointer',
-                                fontWeight: 600 
-                            }}>
-                                <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg, #627EEA 0%, #3D58B6 100%)' }}></div>
-                                ETH <ChevronDown size={14} />
-                            </button>
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                            ${(parseFloat(fromAmount || 0) * 2850).toLocaleString()} (Approx)
+                            <TokenSelector selectedToken={sellToken} onSelect={setSellToken} />
                         </div>
                     </div>
 
@@ -145,10 +305,14 @@ const SwapCard = () => {
                     <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '1rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                             <span>You receive</span>
-                            <span>Balance: 0.00</span>
+                            {selectedQuote && (
+                                <span style={{color: selectedQuote.isBest ? '#4CAF50' : 'var(--text-muted)', fontSize:'0.8rem'}}>
+                                    Via {selectedQuote.provider} {selectedQuote.isBest && '(Best)'}
+                                </span>
+                            )}
                         </div>
                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            {isLoadingQuote ? (
+                             {isLoading ? (
                                 <div style={{ width: '60%', height: '38px', display: 'flex', alignItems: 'center' }}>
                                     <Loader2 className="animate-spin" color="#ff7120" />
                                 </div>
@@ -168,61 +332,87 @@ const SwapCard = () => {
                                     }} 
                                 />
                             )}
-                            <button style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: '8px', 
-                                background: 'rgba(255,255,255,0.1)', 
-                                border: '1px solid rgba(255,255,255,0.1)', 
-                                borderRadius: '2rem', 
-                                padding: '0.5rem 1rem', 
-                                color: 'white', 
-                                cursor: 'pointer',
-                                fontWeight: 600 
-                            }}>
-                                <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#2775CA' }}></div>
-                                USDC <ChevronDown size={14} />
-                            </button>
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                            Price Impact <span style={{ color: '#ff3b30', fontSize: '0.75rem' }}>-0.05%</span>
+                            <TokenSelector selectedToken={buyToken} onSelect={setBuyToken} />
                         </div>
                     </div>
 
                     {/* Aggregator Comparison */}
                     <div style={{ marginTop: '0.5rem' }}>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.8rem', fontWeight: 600, letterSpacing: '0.05em' }}>BEST ROUTE</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.8rem', fontWeight: 600, letterSpacing: '0.05em' }}>
+                            MULTI-AGGREGATOR RACE (Select One)
+                        </div>
+                        
+                        {error && <div style={{color:'red', fontSize:'0.8rem'}}>{error}</div>}
+
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {providers.map((p, i) => (
-                                <div key={i} style={{ 
-                                    display: 'flex', 
-                                    justifyContent: 'space-between', 
-                                    alignItems: 'center', 
-                                    padding: '0.8rem', 
-                                    borderRadius: '0.8rem', 
-                                    background: p.best ? 'rgba(255, 113, 32, 0.15)' : 'rgba(255,255,255,0.03)',
-                                    border: p.best ? '1px solid var(--accent-color)' : '1px solid transparent'
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{p.name}</div>
-                                        {p.best && <span style={{ fontSize: '0.7rem', background: 'var(--accent-color)', color: 'white', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>BEST</span>}
+                            {quotes.length === 0 && !isLoading && !error && (
+                                <div style={{textAlign:'center', color:'#555', fontSize:'0.9rem', padding:'1rem'}}>Enter amount to start race</div>
+                            )}
+                            
+                            {quotes.map((quote, i) => {
+                                const outputFmt = parseFloat(ethers.formatUnits(quote.output, TOKENS.USDC.decimals)).toFixed(4);
+                                const netValueStr = quote.netValueUsd ? `$${quote.netValueUsd.toFixed(2)}` : '---';
+                                const gasCostStr = quote.gasCostUsd ? `$${quote.gasCostUsd.toFixed(2)}` : '---';
+                                
+                                const isSelected = selectedQuote && selectedQuote.provider === quote.provider;
+                                const isError = !!quote.error;
+
+                                return (
+                                <div 
+                                    key={i} 
+                                    onClick={() => !isError && setSelectedQuote(quote)}
+                                    style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center', 
+                                        padding: '0.8rem', 
+                                        borderRadius: '0.8rem', 
+                                        background: isError ? 'rgba(255,0,0,0.05)' : (isSelected ? 'rgba(255, 113, 32, 0.2)' : (quote.isBest ? 'rgba(255, 113, 32, 0.05)' : 'rgba(255,255,255,0.03)')),
+                                        border: isError ? '1px solid rgba(255,0,0,0.1)' : (isSelected ? '1px solid var(--accent-color)' : (quote.isBest ? '1px solid rgba(255, 113, 32, 0.3)' : '1px solid transparent')),
+                                        cursor: isError ? 'not-allowed' : 'pointer',
+                                        transition: 'all 0.2s',
+                                        opacity: isError ? 0.6 : 1
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{quote.provider}</div>
+                                            {quote.isBest && !isError && <span style={{ fontSize: '0.7rem', background: 'var(--accent-color)', color: 'white', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>WINNER</span>}
+                                            {isError && <span style={{ fontSize: '0.7rem', background: '#ef4444', color: 'white', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>FAILED</span>}
+                                        </div>
+                                        <div style={{ fontSize: '0.75rem', color: '#aaa' }}>
+                                            {isError ? (
+                                                <span style={{color:'#ef4444'}}>
+                                                    {quote.error.length > 25 ? quote.error.substring(0,25)+'...' : quote.error}
+                                                </span>
+                                            ) : (
+                                                <>Net Value: <span style={{color: quote.isBest ? 'var(--accent-color)' : '#bbb', fontWeight:'600'}}>{netValueStr}</span></>
+                                            )}
+                                        </div>
                                     </div>
+                                    
                                     <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontWeight: 600, color: p.best ? 'var(--accent-color)' : 'var(--text-color)' }}>{p.rate}</div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Gas: {p.fee}</div>
+                                        <div style={{ fontWeight: 600, color: isError ? '#ef4444' : (quote.isBest ? 'var(--accent-color)' : 'var(--text-color)') }}>
+                                            {isError ? 'Unavailable' : `${outputFmt} USDC`}
+                                        </div>
+                                        {!isError && (
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'4px' }}>
+                                                <Fuel size={10} /> Gas: <span style={{color:'#f87171'}}>-{gasCostStr}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
-                            ))}
+                            )})}
                         </div>
                     </div>
 
                     <div style={{ marginTop: '1rem' }}>
                         <button 
-                            onClick={handleSwap}
-                            disabled={isSwapping}
+                            disabled={isLoading || swapStatus !== 'idle'}
+                            onClick={!account ? connectWallet : executeSwap}
                             style={{
                             width: '100%',
-                            background: isSwapping ? '#333' : 'var(--accent-color)',
+                            background: (isLoading || swapStatus !== 'idle') ? '#333' : 'var(--accent-color)',
                             border: 'none',
                             padding: '1.2rem',
                             borderRadius: '1rem',
@@ -230,11 +420,15 @@ const SwapCard = () => {
                             fontWeight: 700,
                             fontSize: '1rem',
                             fontFamily: 'var(--font-display)',
-                            cursor: isSwapping ? 'not-allowed' : 'pointer',
+                            cursor: (!account || isLoading || swapStatus !== 'idle') ? 'not-allowed' : 'pointer',
                             transition: 'all 0.2s',
-                            opacity: isSwapping ? 0.7 : 1
+                            opacity: (!account || isLoading || swapStatus !== 'idle') ? 0.7 : 1
                         }}>
-                             {isSwapping ? 'CONFIRMING...' : (!account ? 'CONNECT WALLET' : 'SWAP NOW')}
+                             {!account ? 'CONNECT WALLET' : 
+                                swapStatus === 'initiating' ? 'INITIATING...' :
+                                swapStatus === 'approving' ? 'APPROVING...' :
+                                swapStatus === 'swapping' ? 'SWAPPING...' :
+                                'SWAP NOW'}
                         </button>
                     </div>
                 </div>

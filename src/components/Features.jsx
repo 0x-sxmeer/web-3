@@ -36,14 +36,10 @@ const Features = () => {
         </Reveal>
       </div>
 
-      <div style={{ 
+      <div className="features-grid" style={{ 
           display: 'grid', 
-          gridTemplateColumns: 'minmax(300px, 1fr) 30% minmax(300px, 1fr)', 
           gap: '2.5rem', 
-          alignItems: 'stretch',
-          '@media (max-width: 1024px)': {
-             gridTemplateColumns: '1fr'
-          }
+          alignItems: 'stretch'
       }}>
         {/* Left Card */}
         <Reveal delay={0.3} width="100%">
@@ -142,6 +138,16 @@ const Features = () => {
             </GlowingCard>
         </Reveal>
       </div>
+      <style>{`
+          .features-grid {
+              grid-template-columns: minmax(300px, 1fr) 30% minmax(300px, 1fr);
+          }
+          @media (max-width: 1024px) {
+              .features-grid {
+                  grid-template-columns: 1fr;
+              }
+          }
+      `}</style>
     </section>
   );
 };
