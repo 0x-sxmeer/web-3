@@ -7,7 +7,6 @@ export const useAggregator = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    // HELPER: Convert 1inch ETH address (0xeee...) to LI.FI ETH address (0x000...)
     const normalizeToken = (address) => {
         if (!address) return '0x0000000000000000000000000000000000000000';
         if (address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
@@ -33,14 +32,11 @@ export const useAggregator = () => {
         setBestQuote(null);
 
         try {
-            const fromToken = normalizeToken(sellToken);
-            const toToken = normalizeToken(buyToken);
-
             const params = new URLSearchParams({
                 fromChain: fromChain || 1, 
                 toChain: toChain || 1,     
-                fromToken: fromToken,
-                toToken: toToken,
+                fromToken: normalizeToken(sellToken),
+                toToken: normalizeToken(buyToken),
                 fromAmount: amount, 
                 fromAddress: userAddress || '0x0000000000000000000000000000000000000000',
                 slippage: slippage,
@@ -51,12 +47,21 @@ export const useAggregator = () => {
             const response = await fetch(`/api/lifi/quote?${params.toString()}`);
             
             if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.message || 'Failed to fetch quotes');
+                const errText = await response.text();
+                try {
+                    const errJson = JSON.parse(errText);
+                    throw new Error(errJson.message || 'Route unavailable');
+                } catch (e) {
+                    throw new Error('Failed to fetch quote');
+                }
             }
 
             const data = await response.json();
             
+            if (!data.transactionRequest) {
+                throw new Error("No transaction route found");
+            }
+
             const quote = {
                 provider: data.toolDetails?.name || 'Aggregator',
                 logo: data.toolDetails?.logoURI,
@@ -66,8 +71,7 @@ export const useAggregator = () => {
                 netValueUsd: parseFloat(data.estimate.toAmountUSD || 0),
                 transactionRequest: data.transactionRequest, 
                 approvalAddress: data.estimate.approvalAddress,
-                isBest: true,
-                raw: data
+                isBest: true
             };
 
             setQuotes([quote]);

@@ -9,11 +9,9 @@ import { ethers } from 'ethers';
 const SwapCard = () => {
     const { account, balance, connectWallet, signer } = useWallet();
     
-    // Chains
     const [fromChain, setFromChain] = useState(1);
     const [toChain, setToChain] = useState(1);
 
-    // Tokens
     const [sellToken, setSellToken] = useState({ 
         symbol: 'ETH', 
         address: '0x0000000000000000000000000000000000000000', 
@@ -31,17 +29,13 @@ const SwapCard = () => {
     const [toAmount, setToAmount] = useState('0.00');
     const [swapStatus, setSwapStatus] = useState('idle');
 
-    // Hooks
     const { getQuotes, bestQuote, isLoading, error } = useAggregator();
 
-    // Debounce Fetch
     useEffect(() => {
         const timer = setTimeout(() => {
             if (!fromAmount || parseFloat(fromAmount) === 0) return;
-            
             try {
                 const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals).toString();
-                
                 getQuotes({
                     sellToken: sellToken.address,
                     buyToken: buyToken.address,
@@ -50,14 +44,11 @@ const SwapCard = () => {
                     fromChain: fromChain,
                     toChain: toChain
                 });
-            } catch (e) {
-                // Ignore invalid input errors
-            }
+            } catch (e) { }
         }, 600);
         return () => clearTimeout(timer);
     }, [fromAmount, sellToken, buyToken, account, fromChain, toChain]);
 
-    // Update UI
     useEffect(() => {
         if (bestQuote) {
             const formatted = ethers.formatUnits(bestQuote.output, bestQuote.outputDecimals);
@@ -67,18 +58,15 @@ const SwapCard = () => {
         }
     }, [bestQuote]);
 
-    // Execute Swap
     const executeSwap = async () => {
         if (!account) return connectWallet();
         if (!bestQuote) return;
 
         try {
             setSwapStatus('initiating');
-
-            // 1. Prepare Active Signer
             let activeSigner = signer;
             
-            // 2. Network Check
+            // 1. Network Check
             const currentChain = Number((await signer.provider.getNetwork()).chainId);
             if (currentChain !== fromChain) {
                 try {
@@ -86,18 +74,16 @@ const SwapCard = () => {
                         method: 'wallet_switchEthereumChain',
                         params: [{ chainId: '0x' + fromChain.toString(16) }],
                     });
-                    
                     const newProvider = new ethers.BrowserProvider(window.ethereum);
                     activeSigner = await newProvider.getSigner();
-                    
                 } catch (switchError) {
-                    alert("Please switch your wallet network to Ethereum Mainnet.");
+                    alert("Please switch your wallet network.");
                     setSwapStatus('idle');
                     return;
                 }
             }
 
-            // 3. Approval Flow
+            // 2. Approval
             const isNative = sellToken.address === '0x0000000000000000000000000000000000000000' || 
                              sellToken.address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 
@@ -107,7 +93,6 @@ const SwapCard = () => {
                     ["function allowance(address,address) view returns (uint256)", "function approve(address,uint256) returns (bool)"], 
                     activeSigner
                 );
-                
                 const amountWei = ethers.parseUnits(fromAmount, sellToken.decimals);
                 const currentAllowance = await tokenContract.allowance(account, bestQuote.approvalAddress);
 
@@ -118,28 +103,42 @@ const SwapCard = () => {
                 }
             }
 
-            // 4. Execution Flow
+            // 3. Execution (With Safe Parsing)
             setSwapStatus('swapping');
 
+            const txData = bestQuote.transactionRequest;
+            
+            // Safe BigInt Conversion
+            const val = txData.value ? BigInt(txData.value) : 0n;
+            
+            // Safe Gas Limit with Fallback
+            let gasLimit = 500000n; // Safe default
+            if (txData.gasLimit) {
+                gasLimit = BigInt(txData.gasLimit);
+            } else if (txData.gas) {
+                gasLimit = BigInt(txData.gas);
+            }
+
             const txRequest = {
-                to: bestQuote.transactionRequest.to,
-                data: bestQuote.transactionRequest.data,
-                value: bestQuote.transactionRequest.value,
+                to: txData.to,
+                data: txData.data,
+                value: val,
                 from: account,
-                gasLimit: BigInt(bestQuote.transactionRequest.gasLimit) * 120n / 100n 
+                gasLimit: (gasLimit * 120n) / 100n // 20% Buffer
             };
 
             const tx = await activeSigner.sendTransaction(txRequest);
             await tx.wait();
             
             setSwapStatus('idle');
-            alert(`Transaction Successful! Hash: ${tx.hash}`);
+            alert(`Swap Successful! Hash: ${tx.hash}`);
             setFromAmount('0');
 
         } catch (err) {
             setSwapStatus('idle');
-            const msg = err.reason || err.data?.message || err.message;
-            alert(`Swap Failed: ${msg}`);
+            // Extract the most meaningful error message
+            const msg = err.info?.error?.message || err.shortMessage || err.message || "Unknown error";
+            alert(`Transaction Failed: ${msg}`);
         }
     };
 
@@ -147,12 +146,11 @@ const SwapCard = () => {
         <div style={{ maxWidth: '480px', width: '100%', margin: '0 auto' }}>
             <GlowingCard spread={80} inactiveZone={0.01} glowColor="#ff7120">
                 <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                    
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 600 }}>Swap</h2>
                     </div>
 
-                    {/* From Input */}
+                    {/* From Token */}
                     <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '1rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                             <span>You pay</span>
@@ -169,14 +167,13 @@ const SwapCard = () => {
                         </div>
                     </div>
 
-                    {/* Arrow */}
                     <div style={{ display: 'flex', justifyContent: 'center', margin: '-1rem 0', zIndex: 10 }}>
                         <div style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '0.8rem', padding: '0.5rem' }}>
                             <ArrowDown size={20} color="var(--text-muted)" />
                         </div>
                     </div>
 
-                    {/* To Input */}
+                    {/* To Token */}
                     <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '1rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                             <span>You receive</span>
@@ -196,7 +193,6 @@ const SwapCard = () => {
                         </div>
                     </div>
 
-                    {/* Route Info */}
                     {bestQuote && (
                         <div style={{ padding: '1rem', background: 'rgba(255,113,32,0.1)', borderRadius: '0.8rem', border: '1px solid rgba(255,113,32,0.3)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '4px' }}>
