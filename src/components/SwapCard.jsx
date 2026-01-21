@@ -7,14 +7,13 @@ import TokenSelector from './TokenSelector';
 import { ethers } from 'ethers';
 
 const SwapCard = () => {
-    // --- State Management ---
-    const { account, balance, connectWallet, signer, chainId } = useWallet();
-    const [mockMode, setMockMode] = useState(false);
+    const { account, balance, connectWallet, signer } = useWallet();
     
+    // Chains
     const [fromChain, setFromChain] = useState(1);
     const [toChain, setToChain] = useState(1);
 
-    // Initial Tokens (Using 0x000... for safety, but TokenSelector might return 0xeee...)
+    // Tokens
     const [sellToken, setSellToken] = useState({ 
         symbol: 'ETH', 
         address: '0x0000000000000000000000000000000000000000', 
@@ -32,10 +31,10 @@ const SwapCard = () => {
     const [toAmount, setToAmount] = useState('0.00');
     const [swapStatus, setSwapStatus] = useState('idle');
 
-    // --- Hooks ---
-    const { getQuotes, bestQuote, quotes, isLoading, error } = useAggregator();
+    // Hooks
+    const { getQuotes, bestQuote, isLoading, error } = useAggregator();
 
-    // --- Debounced Fetching ---
+    // Debounce Fetch
     useEffect(() => {
         const timer = setTimeout(() => {
             if (!fromAmount || parseFloat(fromAmount) === 0) return;
@@ -52,13 +51,13 @@ const SwapCard = () => {
                     toChain: toChain
                 });
             } catch (e) {
-                console.error("Invalid amount input");
+                // Ignore invalid input errors
             }
         }, 600);
         return () => clearTimeout(timer);
     }, [fromAmount, sellToken, buyToken, account, fromChain, toChain]);
 
-    // --- Update UI ---
+    // Update UI
     useEffect(() => {
         if (bestQuote) {
             const formatted = ethers.formatUnits(bestQuote.output, bestQuote.outputDecimals);
@@ -68,35 +67,29 @@ const SwapCard = () => {
         }
     }, [bestQuote]);
 
-    // --- Execution Logic ---
+    // Execute Swap
     const executeSwap = async () => {
         if (!account) return connectWallet();
-        if (!bestQuote && !mockMode) return;
-
-        if (mockMode) {
-            setSwapStatus('swapping');
-            await new Promise(r => setTimeout(r, 2000));
-            setSwapStatus('idle');
-            alert('Mock Swap Success!');
-            return;
-        }
+        if (!bestQuote) return;
 
         try {
             setSwapStatus('initiating');
 
-            // 1. Network Switch & Signer Setup
+            // 1. Prepare Active Signer
             let activeSigner = signer;
-            const currentChain = Number((await signer.provider.getNetwork()).chainId);
             
+            // 2. Network Check
+            const currentChain = Number((await signer.provider.getNetwork()).chainId);
             if (currentChain !== fromChain) {
                 try {
                     await window.ethereum.request({
                         method: 'wallet_switchEthereumChain',
                         params: [{ chainId: '0x' + fromChain.toString(16) }],
                     });
-                    // Refresh signer after switch
+                    
                     const newProvider = new ethers.BrowserProvider(window.ethereum);
                     activeSigner = await newProvider.getSigner();
+                    
                 } catch (switchError) {
                     alert("Please switch your wallet network to Ethereum Mainnet.");
                     setSwapStatus('idle');
@@ -104,9 +97,7 @@ const SwapCard = () => {
                 }
             }
 
-            // 2. Approval Flow
-            // Check specifically for non-native tokens (native ETH doesn't need approval)
-            // We check against both 0x000... and 0xeee... to be safe
+            // 3. Approval Flow
             const isNative = sellToken.address === '0x0000000000000000000000000000000000000000' || 
                              sellToken.address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 
@@ -123,63 +114,42 @@ const SwapCard = () => {
                 if (currentAllowance < amountWei) {
                     setSwapStatus('approving');
                     const tx = await tokenContract.approve(bestQuote.approvalAddress, amountWei);
-                    console.log("Approval Tx:", tx.hash);
-                    await tx.wait(); 
+                    await tx.wait();
                 }
             }
 
-            // 3. Execution Flow
+            // 4. Execution Flow
             setSwapStatus('swapping');
 
             const txRequest = {
                 to: bestQuote.transactionRequest.to,
                 data: bestQuote.transactionRequest.data,
-                value: bestQuote.transactionRequest.value, 
+                value: bestQuote.transactionRequest.value,
                 from: account,
-                // Add buffer to gas limit
                 gasLimit: BigInt(bestQuote.transactionRequest.gasLimit) * 120n / 100n 
             };
 
-            console.log("Sending Swap Tx:", txRequest);
             const tx = await activeSigner.sendTransaction(txRequest);
-            console.log("Tx Hash:", tx.hash);
-            
             await tx.wait();
             
             setSwapStatus('idle');
-            alert(`✅ Swap Successful! \nHash: ${tx.hash}`);
+            alert(`Transaction Successful! Hash: ${tx.hash}`);
             setFromAmount('0');
 
         } catch (err) {
-            console.error("Execution Error:", err);
             setSwapStatus('idle');
             const msg = err.reason || err.data?.message || err.message;
             alert(`Swap Failed: ${msg}`);
         }
     };
 
-    // ... Return JSX (Same as before) ...
     return (
         <div style={{ maxWidth: '480px', width: '100%', margin: '0 auto' }}>
             <GlowingCard spread={80} inactiveZone={0.01} glowColor="#ff7120">
                 <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                     
-                    {/* Header */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 600 }}>Swap</h2>
-                        <div 
-                            onClick={() => setMockMode(!mockMode)}
-                            style={{ 
-                                fontSize: '0.7rem', 
-                                padding: '4px 8px', 
-                                borderRadius: '4px', 
-                                background: mockMode ? '#ff7120' : '#333', 
-                                cursor: 'pointer',
-                                fontWeight: 'bold'
-                            }}
-                        >
-                            {mockMode ? 'MOCK MODE' : 'LIVE'}
-                        </div>
                     </div>
 
                     {/* From Input */}
@@ -249,17 +219,16 @@ const SwapCard = () => {
                         </div>
                     )}
 
-                    {/* Swap Button */}
                     <button 
                         onClick={executeSwap}
-                        disabled={isLoading || swapStatus !== 'idle' || (!bestQuote && !mockMode)}
+                        disabled={isLoading || swapStatus !== 'idle' || !bestQuote}
                         style={{
                             width: '100%',
-                            background: (swapStatus !== 'idle' || (!bestQuote && !mockMode)) ? '#333' : 'var(--accent-color)',
+                            background: (swapStatus !== 'idle' || !bestQuote) ? '#333' : 'var(--accent-color)',
                             border: 'none', padding: '1.2rem', borderRadius: '1rem',
                             color: 'white', fontWeight: 700, fontSize: '1rem', fontFamily: 'var(--font-display)',
-                            cursor: (swapStatus !== 'idle' || (!bestQuote && !mockMode)) ? 'not-allowed' : 'pointer',
-                            opacity: (swapStatus !== 'idle' || (!bestQuote && !mockMode)) ? 0.7 : 1
+                            cursor: (swapStatus !== 'idle' || !bestQuote) ? 'not-allowed' : 'pointer',
+                            opacity: (swapStatus !== 'idle' || !bestQuote) ? 0.7 : 1
                         }}>
                          {swapStatus === 'idle' ? 'SWAP NOW' : swapStatus.toUpperCase() + '...'}
                     </button>

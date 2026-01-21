@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronDown, Search, Loader2 } from 'lucide-react';
-import { fetchOneInchTokens } from '../services/tokenService';
+// import { fetchOneInchTokens } from '../services/tokenService';
 import { getTokensForNetwork } from '../services/tokenLists';
 
 const TokenSelector = ({ selectedToken, onSelect, chainId }) => {
@@ -12,22 +12,9 @@ const TokenSelector = ({ selectedToken, onSelect, chainId }) => {
     // Reload tokens when Chain ID changes (e.g., user switches from ETH to BSC)
     useEffect(() => {
         if (isOpen) {
-            const loadTokens = async () => {
-                const target = Number(chainId) || 1;
-                
-                // Show default list immediately for responsiveness
-                const defaults = getTokensForNetwork(target);
-                setTokenList(defaults);
-
-                setIsLoading(true);
-                // Fetch tokens for the chain selected in SwapCard
-                const list = await fetchOneInchTokens(target);
-                if (list && list.length > 0) {
-                    setTokenList(list);
-                }
-                setIsLoading(false);
-            };
-            loadTokens();
+            // Load tokens from static list based on chainId
+            const defaults = getTokensForNetwork(chainId);
+            setTokenList(defaults);
         }
     }, [isOpen, chainId]);
 

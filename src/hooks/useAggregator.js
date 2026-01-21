@@ -7,7 +7,7 @@ export const useAggregator = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    // Helper: LI.FI expects 0x000... for native ETH, but 1inch returns 0xeee...
+    // HELPER: Convert 1inch ETH address (0xeee...) to LI.FI ETH address (0x000...)
     const normalizeToken = (address) => {
         if (!address) return '0x0000000000000000000000000000000000000000';
         if (address.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
@@ -23,7 +23,7 @@ export const useAggregator = () => {
         userAddress, 
         fromChain, 
         toChain,
-        slippage = 0.005 // 0.5% default
+        slippage = 0.005 
     }) => {
         if (!amount || parseFloat(amount) === 0) return;
         
@@ -33,20 +33,20 @@ export const useAggregator = () => {
         setBestQuote(null);
 
         try {
-            // Jumper/LI.FI Quote Endpoint
+            const fromToken = normalizeToken(sellToken);
+            const toToken = normalizeToken(buyToken);
+
             const params = new URLSearchParams({
                 fromChain: fromChain || 1, 
                 toChain: toChain || 1,     
-                fromToken: normalizeToken(sellToken), // <--- FIX APPLIED HERE
-                toToken: normalizeToken(buyToken),    // <--- FIX APPLIED HERE
+                fromToken: fromToken,
+                toToken: toToken,
                 fromAmount: amount, 
                 fromAddress: userAddress || '0x0000000000000000000000000000000000000000',
                 slippage: slippage,
                 allowBridges: 'true', 
                 allowExchanges: 'true'
             });
-
-            console.log("⚡ Fetching LI.FI Quotes:", params.toString());
 
             const response = await fetch(`/api/lifi/quote?${params.toString()}`);
             
@@ -67,14 +67,13 @@ export const useAggregator = () => {
                 transactionRequest: data.transactionRequest, 
                 approvalAddress: data.estimate.approvalAddress,
                 isBest: true,
-                raw: data 
+                raw: data
             };
 
             setQuotes([quote]);
             setBestQuote(quote);
 
         } catch (err) {
-            console.error("❌ Aggregator Error:", err);
             setError(err.message || "Failed to find routes");
         } finally {
             setIsLoading(false);
