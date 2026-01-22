@@ -262,8 +262,9 @@ const SwapCard = () => {
             const tx = await signer.sendTransaction({
                 ...cleanTx,
                 value: val,
-                // Let wallet estimate gas if needed, or use a buffer
-                // gasLimit: (BigInt(txData.gasLimit || 500000) * 125n) / 100n 
+                // FIX: Manually set gas limit with a 50% buffer.
+                // This prevents "estimateGas" errors by telling the wallet "Trust me, use this much gas".
+                gasLimit: (BigInt(txData.gasLimit || 300000) * 150n) / 100n 
             });
             
             await tx.wait();
