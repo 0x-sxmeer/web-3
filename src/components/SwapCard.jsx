@@ -16,7 +16,7 @@ const SwapCard = () => {
     const [fromChain, setFromChain] = useState({ id: 1, name: 'Ethereum', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/ethereum.svg' });
     const [toChain, setToChain] = useState({ id: 10, name: 'Optimism', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/optimism.svg' });
     const [sellToken, setSellToken] = useState({ symbol: 'ETH', name: 'Ethereum', address: '0x0000000000000000000000000000000000000000', decimals: 18, logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/ethereum.svg' });
-    const [buyToken, setBuyToken] = useState({ symbol: 'USDC', name: 'USD Coin', address: '0x0b2c639c535313529b233428320e6d900630fded', decimals: 6, logoURI: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' });
+    const [buyToken, setBuyToken] = useState({ symbol: 'USDT', name: 'Tether USD', address: '0x94b008aa00579c1307b0ef2c499ad9849ce975b3', decimals: 6, logoURI: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png' });
     const [fromAmount, setFromAmount] = useState('');
     const [toAmount, setToAmount] = useState('');
     const [swapStatus, setSwapStatus] = useState('idle');
@@ -262,9 +262,9 @@ const SwapCard = () => {
             const tx = await signer.sendTransaction({
                 ...cleanTx,
                 value: val,
-                // FIX: Manually set gas limit with a 50% buffer.
-                // This prevents "estimateGas" errors by telling the wallet "Trust me, use this much gas".
-                gasLimit: (BigInt(txData.gasLimit || 300000) * 150n) / 100n 
+                // FIX: Increase default gas to 800,000 and the buffer to 200% (2x)
+                // This forces the wallet to accept the transaction even if it looks complex.
+                gasLimit: (BigInt(txData.gasLimit || 800000) * 200n) / 100n 
             });
             
             await tx.wait();
