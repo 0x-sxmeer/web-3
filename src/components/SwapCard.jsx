@@ -35,7 +35,7 @@ const SwapCard = () => {
     // Tools Data (Available from API)
     const [availableBridges, setAvailableBridges] = useState([]);
     const [availableExchanges, setAvailableExchanges] = useState([]);
-    const [isLoadingTools, setIsLoadingTools] = useState(false);
+    const [isLoadingTools, setIsLoadingTools] = useState(true);
 
     // Preferences State
     const [slippage, setSlippage] = useState('Auto');
@@ -161,6 +161,10 @@ const SwapCard = () => {
     // --- Fetch Logic ---
     useEffect(() => {
         const timer = setTimeout(() => {
+            // 🛑 STOP: Do not fetch if we are still loading settings.
+            // This prevents the "empty list" request that causes the instability.
+            if (isLoadingTools) return; 
+
             if (!fromAmount || parseFloat(fromAmount) === 0) {
                 setActiveRoute(null);
                 setSwapStatus('idle');
@@ -172,7 +176,7 @@ const SwapCard = () => {
                 const decimals = sellToken.decimals || 18;
                 const amountWei = ethers.parseUnits(fromAmount, decimals).toString();
                 
-                    getRoutes({
+                getRoutes({
                     sellToken: sellToken.address,
                     buyToken: buyToken.address,
                     amount: amountWei,
@@ -188,7 +192,16 @@ const SwapCard = () => {
             }
         }, 600);
         return () => clearTimeout(timer);
-    }, [fromAmount, sellToken, buyToken, fromChain, toChain, account, getRoutes, slippage, enabledBridges, enabledExchanges]);
+    }, [
+        fromAmount, sellToken, buyToken, fromChain, toChain, account, 
+        getRoutes, slippage, enabledBridges, enabledExchanges, 
+        isLoadingTools // <--- Dependency is required here
+    ]);
+
+    // OPTIONAL: Clear UI errors immediately when inputs change to prevent stale error messages
+    useEffect(() => {
+        setUiError(null);
+    }, [fromAmount, sellToken, buyToken, fromChain, toChain]);
 
     // Update Output
     useEffect(() => {

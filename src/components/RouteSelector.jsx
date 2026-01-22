@@ -78,7 +78,7 @@ const RouteSelector = ({ routes, selectedRoute, onSelect, isOpen, onClose }) => 
                                             <span style={{fontSize: '0.7em', color: '#666'}}>(Est.)</span>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <Clock size={14} /> ~2 min
+                                            <Clock size={14} /> ~{Math.ceil(route.steps[0].estimate.executionDuration / 60)} min
                                         </div>
                                     </div>
                                     {isSelected && <Check size={18} color="#FF7120" />}

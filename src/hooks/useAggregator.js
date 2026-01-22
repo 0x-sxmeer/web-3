@@ -34,12 +34,14 @@ export const useAggregator = () => {
                 fromTokenAddress: normalizeToken(sellToken),
                 toTokenAddress: normalizeToken(buyToken),
                 fromAmount: amount, 
-                // Use a dummy non-zero address if not connected, as some providers fail with 0x0
                 fromAddress: userAddress || '0x0000000000000000000000000000000000000000',
                 options: { 
                     slippage: slippage,
-                    bridges: allowBridges.length > 0 ? { allow: allowBridges } : undefined,
-                    exchanges: allowExchanges.length > 0 ? { allow: allowExchanges } : undefined
+                    integrator: 'chaingpt-labs-replica', // <--- REQUIRED for stable results
+                    order: 'RECOMMENDED',
+                    // Fix: Ensure we don't send { allow: [] } which blocks all bridges
+                    bridges: allowBridges && allowBridges.length > 0 ? { allow: allowBridges } : undefined,
+                    exchanges: allowExchanges && allowExchanges.length > 0 ? { allow: allowExchanges } : undefined
                 }
             };
 

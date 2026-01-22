@@ -54,6 +54,7 @@ export const WalletProvider = ({ children }) => {
     }
   };
   useEffect(() => {
+        let mounted = true;
         const initProvider = async () => {
             if (window.ethereum) {
                 const _provider = new ethers.BrowserProvider(window.ethereum);
@@ -61,12 +62,15 @@ export const WalletProvider = ({ children }) => {
                 
                 // --- Event Handlers ---
                 const handleAccountsChanged = async (accounts) => {
+                    if (!mounted) return;
                     if (accounts.length > 0) {
                         setAccount(accounts[0]);
                         // Re-fetch signer for new account
                         const _signer = await _provider.getSigner();
-                        setSigner(_signer);
-                        updateBalance(accounts[0], _provider);
+                        if (mounted) {
+                            setSigner(_signer);
+                            updateBalance(accounts[0], _provider);
+                        }
                     } else {
                         setAccount(null);
                         setSigner(null);
@@ -75,19 +79,23 @@ export const WalletProvider = ({ children }) => {
                 };
 
                 const handleChainChanged = async (chainIdHex) => {
+                    if (!mounted) return;
                     const id = parseInt(chainIdHex, 16);
                     setChainId(id);
                     
                     // Hot-Update Provider & Signer instead of reloading
                     const _provider = new ethers.BrowserProvider(window.ethereum);
-                    setProvider(_provider);
+                    if (mounted) setProvider(_provider);
                     
                     try {
                         const _signer = await _provider.getSigner();
-                        setSigner(_signer);
                         const _address = await _signer.getAddress();
-                        setAccount(_address);
-                        updateBalance(_address, _provider);
+                        
+                        if (mounted) {
+                            setSigner(_signer);
+                            setAccount(_address);
+                            updateBalance(_address, _provider);
+                        }
                     } catch (e) {
                          console.error("Failed to update wallet state after chain switch", e);
                     }
@@ -100,21 +108,24 @@ export const WalletProvider = ({ children }) => {
                 // Initial Check
                 try {
                     const accounts = await _provider.listAccounts();
-                    if (accounts.length > 0) {
+                    if (accounts.length > 0 && mounted) {
                          const currentAccount = accounts[0].address;
                          setAccount(currentAccount);
                          const _signer = await _provider.getSigner();
-                         setSigner(_signer);
-                         updateBalance(currentAccount, _provider);
+                         if (mounted) {
+                             setSigner(_signer);
+                             updateBalance(currentAccount, _provider);
+                         }
                     }
                     const network = await _provider.getNetwork();
-                    setChainId(Number(network.chainId));
+                    if (mounted) setChainId(Number(network.chainId));
                 } catch (e) {
                     console.error("Initialization Error:", e);
                 }
 
                 // Cleanup
                 return () => {
+                    mounted = false;
                     window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
                     window.ethereum.removeListener('chainChanged', handleChainChanged);
                 };
