@@ -62,7 +62,7 @@ const Preloader = () => {
               zIndex: 10000
             }}
           >
-            LABS
+            NEBULA LABS
           </motion.div>
         </motion.div>
       )}

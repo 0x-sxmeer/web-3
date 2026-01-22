@@ -10,15 +10,15 @@ const Features = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '5rem', flexWrap: 'wrap', gap: '2rem' }}>
         <Reveal>
             <h2 style={{ fontSize: 'clamp(2.5rem, 6vw, 4.5rem)', fontFamily: 'var(--font-display)', lineHeight: 1, color: 'var(--text-color)', fontWeight: 700, letterSpacing: '-0.03em' }}>
-                SUPERCHARGING<br/>WEB3 BUILDERS
+                SUPERCHARGING<br/>YOUR TRADES
             </h2>
         </Reveal>
         
         <Reveal delay={0.2}>
             <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '0.9rem', marginBottom: '1.2rem', fontWeight: 600, letterSpacing: '0.05em', color: 'var(--text-muted)' }}>FOCUS AREAS</div>
+                <div style={{ fontSize: '0.9rem', marginBottom: '1.2rem', fontWeight: 600, letterSpacing: '0.05em', color: 'var(--text-muted)' }}>WHY NEBULA?</div>
                 <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    {['AI', 'DeFi', 'DePin', 'L1 & L2'].map(tag => (
+                    {['Best Rates', 'Low Fees', 'Fast', 'Secure'].map(tag => (
                         <span key={tag} style={{ 
                             border: '1px solid rgba(255,255,255,0.1)', 
                             padding: '0.6rem 1.4rem', 
@@ -53,13 +53,13 @@ const Features = () => {
                     height: '100%'
                 }}>
                     <div>
-                        <h3 style={{ fontSize: '2rem', marginBottom: '1.5rem', fontFamily: 'var(--font-display)', letterSpacing: '-0.03em', fontWeight: 600 }}>INCUBATION &<br/>ACCELERATION</h3>
+                        <h3 style={{ fontSize: '2rem', marginBottom: '1.5rem', fontFamily: 'var(--font-display)', letterSpacing: '-0.03em', fontWeight: 600 }}>BEST RATES &<br/>ROUTING</h3>
                         <p style={{ color: 'var(--text-muted)', lineHeight: 1.6, fontSize: '1rem' }}>
-                            Comprehensive support for early-stage startups. We provide mentorship, technical guidance, and market access to help you scale.
+                            We aggregate liquidity from top DEXs to ensure you get the best possible price for every trade.
                         </p>
                     </div>
                     <ul style={{ listStyle: 'none', padding: 0, marginTop: '3rem' }}>
-                        {['Mentorship', 'Marketing', 'Legal Support', 'Exchange Listings'].map(item => (
+                        {['Zero Slippage', 'MEV Protection', 'Gas Optimization', 'Deep Liquidity'].map(item => (
                             <li key={item} style={{ padding: '0.8rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', fontWeight: 500 }}>
                                 {item} <span style={{ color: 'var(--accent-color)' }}>+</span>
                             </li>
@@ -122,13 +122,13 @@ const Features = () => {
                     height: '100%'
                 }}>
                     <div>
-                        <h3 style={{ fontSize: '2rem', marginBottom: '1.5rem', fontFamily: 'var(--font-display)', letterSpacing: '-0.03em', fontWeight: 600 }}>INVESTMENT &<br/>FUNDING</h3>
+                        <h3 style={{ fontSize: '2rem', marginBottom: '1.5rem', fontFamily: 'var(--font-display)', letterSpacing: '-0.03em', fontWeight: 600 }}>MULTI-CHAIN<br/>FREEDOM</h3>
                         <p style={{ color: 'var(--text-muted)', lineHeight: 1.6, fontSize: '1rem' }}>
-                            Strategic capital for high-potential projects. We invest in teams building the infrastructure of the decentralized future.
+                            Swap tokens seamlessly across Ethereum, BSC, Polygon, Avalanche, and more with a single click.
                         </p>
                     </div>
                      <ul style={{ listStyle: 'none', padding: 0, marginTop: '3rem' }}>
-                        {['Seed Funding', 'Strategic Grants', 'VC Connections', 'Tokenomics'].map(item => (
+                        {['Cross-Chain', 'Bridge', 'Native Swap', '10+ Chains'].map(item => (
                             <li key={item} style={{ padding: '0.8rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', fontWeight: 500 }}>
                                 {item} <span style={{ color: 'var(--accent-color)' }}>+</span>
                             </li>

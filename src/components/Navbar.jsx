@@ -21,7 +21,7 @@ const Navbar = () => {
     }} className="navbar-container">
       <div style={{ fontWeight: 600, fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'var(--font-display)', color: 'var(--text-color)', letterSpacing: '-0.03em' }}>
         <div style={{ width: 28, height: 28, background: '#F0F0F0', borderRadius: '50%'}}></div>
-        LABS
+        NEBULA LABS
       </div>
 
       {/* Desktop Menu */}

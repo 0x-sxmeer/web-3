@@ -37,7 +37,7 @@ export const useAggregator = () => {
                 fromAddress: userAddress || '0x0000000000000000000000000000000000000000',
                 options: { 
                     slippage: slippage,
-                    integrator: 'chaingpt-labs-replica', // <--- ADD THIS
+                    integrator: 'nebula-labs', // <--- ADD THIS
                     order: 'RECOMMENDED',               // <--- ADD THIS
                     bridges: allowBridges.length > 0 ? { allow: allowBridges } : undefined,
                     exchanges: allowExchanges.length > 0 ? { allow: allowExchanges } : undefined

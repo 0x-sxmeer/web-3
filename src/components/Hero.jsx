@@ -52,7 +52,7 @@ const Hero = () => {
                     marginLeft: '-0.05em',
                     fontWeight: 700
                 }}>
-                    TOMORROW<br/>BACKING
+                    MULTI-CHAIN<br/>SWAPPING
                 </h1>
             </Reveal>
 
@@ -66,7 +66,7 @@ const Hero = () => {
                     fontWeight: 400,
                     letterSpacing: '-0.01em'
                 }}>
-                    Backing the very best web3 builders - transforming visionary ideas into real-world growth.
+                    The ultimate aggregator for seamless, low-fee token swaps across all major chains.
                 </p>
             </Reveal>
             
@@ -96,7 +96,7 @@ const Hero = () => {
                     e.currentTarget.style.color = 'var(--text-color)';
                 }}
                 >
-                    <ScrambleText text="Apply for incubation" />
+                    <ScrambleText text="Start Swapping" />
                 </button>
             </Reveal>
 
