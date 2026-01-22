@@ -13,6 +13,12 @@ export const WalletProvider = ({ children }) => {
   const [balance, setBalance] = useState('0.00');
   const [isConnecting, setIsConnecting] = useState(false);
 
+  // Helper to find the best wallet provider (OKX or MetaMask)
+  const getWalletProvider = () => {
+    if (typeof window === 'undefined') return null;
+    return window.okxwallet || window.ethereum;
+  };
+
   const updateBalance = async (userAddress, userProvider) => {
     if (userAddress && userProvider) {
       try {
@@ -28,125 +34,99 @@ export const WalletProvider = ({ children }) => {
     }
   };
 
-  const initProvider = async () => {
-    if (window.ethereum) {
-      const _provider = new ethers.BrowserProvider(window.ethereum);
+  // Reusable initialization logic
+  const initWalletState = async (walletSource) => {
+      if (!walletSource) return;
+
+      const _provider = new ethers.BrowserProvider(walletSource);
       setProvider(_provider);
-      
+
       try {
-        // Check if already authorized WITHOUT prompting
         const accounts = await _provider.listAccounts();
         
         if (accounts.length > 0) {
             const _signer = await _provider.getSigner();
             setSigner(_signer);
             const _account = await _signer.getAddress();
-            setAccount(_account);
+            setAccount(_account); // Use address string directly
+            
             const network = await _provider.getNetwork();
-            setChainId(network.chainId);
+            setChainId(Number(network.chainId));
             
             // Fetch initial balance
             await updateBalance(_account, _provider);
         }
       } catch (e) {
-        console.log("Wallet not connected on init");
+        console.log("Wallet not connected on init", e);
       }
-    }
   };
+
+  // 1. Auto-connect on mount
   useEffect(() => {
         let mounted = true;
-        const initProvider = async () => {
-            if (window.ethereum) {
-                const _provider = new ethers.BrowserProvider(window.ethereum);
-                setProvider(_provider);
-                
-                // --- Event Handlers ---
+        
+        const setup = async () => {
+            const walletSource = getWalletProvider();
+            
+            if (walletSource) {
+                // Event Handlers
                 const handleAccountsChanged = async (accounts) => {
                     if (!mounted) return;
                     if (accounts.length > 0) {
                         setAccount(accounts[0]);
                         // Re-fetch signer for new account
+                        const _provider = new ethers.BrowserProvider(walletSource);
                         const _signer = await _provider.getSigner();
                         if (mounted) {
+                            setProvider(_provider);
                             setSigner(_signer);
                             updateBalance(accounts[0], _provider);
                         }
                     } else {
                         setAccount(null);
                         setSigner(null);
-                        setBalance(null);
+                        setBalance('0.00');
                     }
                 };
 
                 const handleChainChanged = async (chainIdHex) => {
                     if (!mounted) return;
-                    const id = parseInt(chainIdHex, 16);
-                    setChainId(id);
-                    
-                    // Hot-Update Provider & Signer instead of reloading
-                    const _provider = new ethers.BrowserProvider(window.ethereum);
-                    if (mounted) setProvider(_provider);
-                    
-                    try {
-                        const _signer = await _provider.getSigner();
-                        const _address = await _signer.getAddress();
-                        
-                        if (mounted) {
-                            setSigner(_signer);
-                            setAccount(_address);
-                            updateBalance(_address, _provider);
-                        }
-                    } catch (e) {
-                         console.error("Failed to update wallet state after chain switch", e);
-                    }
+                    // Reload is recommended by MetaMask/Ethers, but we can hot-update
+                    window.location.reload(); 
                 };
 
                 // Attach Listeners
-                window.ethereum.on('accountsChanged', handleAccountsChanged);
-                window.ethereum.on('chainChanged', handleChainChanged);
+                walletSource.on('accountsChanged', handleAccountsChanged);
+                walletSource.on('chainChanged', handleChainChanged);
 
-                // Initial Check
-                try {
-                    const accounts = await _provider.listAccounts();
-                    if (accounts.length > 0 && mounted) {
-                         const currentAccount = accounts[0].address;
-                         setAccount(currentAccount);
-                         const _signer = await _provider.getSigner();
-                         if (mounted) {
-                             setSigner(_signer);
-                             updateBalance(currentAccount, _provider);
-                         }
-                    }
-                    const network = await _provider.getNetwork();
-                    if (mounted) setChainId(Number(network.chainId));
-                } catch (e) {
-                    console.error("Initialization Error:", e);
-                }
+                // Initial Init
+                await initWalletState(walletSource);
 
-                // Cleanup
                 return () => {
                     mounted = false;
-                    window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-                    window.ethereum.removeListener('chainChanged', handleChainChanged);
+                    walletSource.removeListener('accountsChanged', handleAccountsChanged);
+                    walletSource.removeListener('chainChanged', handleChainChanged);
                 };
             }
-
         };
 
-        initProvider();
+        setup();
     }, []);
 
 
+  // 2. Manual Connect
   const connectWallet = async () => {
     setIsConnecting(true);
     try {
-      if (!window.ethereum) {
-        alert("Please install MetaMask!");
+      const walletSource = getWalletProvider();
+
+      if (!walletSource) {
+        alert("Please install OKX Wallet or MetaMask!");
         return;
       }
 
-      await window.ethereum.request({ method: 'eth_requestAccounts' });
-      await initProvider();
+      await walletSource.request({ method: 'eth_requestAccounts' });
+      await initWalletState(walletSource);
       
     } catch (error) {
       console.error("Error connecting wallet:", error);
@@ -159,7 +139,6 @@ export const WalletProvider = ({ children }) => {
     setAccount(null);
     setSigner(null);
     setBalance('0.00');
-    // Note: You can't programmatically disconnect MetaMask, but we clear local state
   };
 
   const value = {
@@ -167,9 +146,9 @@ export const WalletProvider = ({ children }) => {
     provider,
     signer,
     chainId,
-    networkName: chainId === 1n ? 'Ethereum' : chainId === 11155111n ? 'Sepolia' : 'Unknown',
-    balance,       // Exported
-    updateBalance, // Exported
+    networkName: chainId === 1 ? 'Ethereum' : chainId === 11155111 ? 'Sepolia' : 'Unknown',
+    balance,       
+    updateBalance, 
     isConnecting,
     connectWallet,
     disconnectWallet
