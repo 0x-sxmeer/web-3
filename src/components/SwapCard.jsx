@@ -128,7 +128,7 @@ const SwapCard = () => {
              }
 
              try {
-                const provider = new ethers.BrowserProvider(window.ethereum);
+                const provider = new ethers.BrowserProvider(window.okxwallet || window.ethereum);
                 const contract = new ethers.Contract(
                     sellToken.address,
                     ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)'],
@@ -219,9 +219,11 @@ const SwapCard = () => {
         console.log("handleSwitchNetwork CLICKED");
         const chainIdHex = '0x' + fromChain.id.toString(16);
         setUiError(null);
+        //QP: Use the correct provider
+        const provider = window.okxwallet || window.ethereum;
         
         try {
-            await window.ethereum.request({
+            await provider.request({
                 method: 'wallet_switchEthereumChain',
                 params: [{ chainId: chainIdHex }],
             });
@@ -233,7 +235,7 @@ const SwapCard = () => {
                     return;
                 }
                 try {
-                    await window.ethereum.request({
+                    await provider.request({
                         method: 'wallet_addEthereumChain',
                         params: [params],
                     });
@@ -263,7 +265,7 @@ const SwapCard = () => {
             setUiError(null);
             
             // Re-initialize provider to ensure freshness
-            let provider = new ethers.BrowserProvider(window.ethereum);
+            let provider = new ethers.BrowserProvider(window.okxwallet || window.ethereum);
             let activeSigner = await provider.getSigner(); // Get signer for current account
             
             if (!activeSigner) throw new Error("No signer available");
@@ -282,7 +284,7 @@ const SwapCard = () => {
                 while (attempts < 20) {
                     await new Promise(resolve => setTimeout(resolve, 500));
                     // Re-instantiate provider to check chain
-                    provider = new ethers.BrowserProvider(window.ethereum);
+                    provider = new ethers.BrowserProvider(window.okxwallet || window.ethereum);
                     const chain = Number((await provider.getNetwork()).chainId);
                     if (chain === fromChain.id) {
                         switched = true;
@@ -296,7 +298,7 @@ const SwapCard = () => {
                 }
                 
                 // Re-instantiate provider after confirmed switch
-                provider = new ethers.BrowserProvider(window.ethereum);
+                provider = new ethers.BrowserProvider(window.okxwallet || window.ethereum);
                 activeSigner = await provider.getSigner();
             }
 
