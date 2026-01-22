@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GlowingCard } from './GlowingCard';
-import { Fuel, Settings, Wallet, ChevronDown, ArrowDown, ChevronRight, ArrowLeft, Check, X, Loader2 } from 'lucide-react';
+import { Fuel, Settings, Wallet, ChevronDown, ArrowDown, ChevronRight, ArrowLeft, Check, Loader2 } from 'lucide-react';
 import { useAggregator } from '../hooks/useAggregator';
 import { useWallet } from '../contexts/WalletContext';
 import CombinedSelector from './CombinedSelector';
@@ -10,7 +10,7 @@ import { CHAIN_PARAMS } from '../constants/chains';
 import { LiFiService } from '../services/lifiService';
 
 const SwapCard = () => {
-    const { account, balance: nativeBalance, connectWallet, signer, chainId: activeChainId } = useWallet();
+    const { account, balance: nativeBalance, connectWallet, signer, provider, chainId: activeChainId } = useWallet();
     
     // Core Swap State
     const [fromChain, setFromChain] = useState({ id: 1, name: 'Ethereum', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/ethereum.svg' });
@@ -20,34 +20,29 @@ const SwapCard = () => {
     const [fromAmount, setFromAmount] = useState('');
     const [toAmount, setToAmount] = useState('');
     const [swapStatus, setSwapStatus] = useState('idle');
-    const [tokenBalance, setTokenBalance] = useState('0.00'); // Display balance (formatted)
+    const [tokenBalance, setTokenBalance] = useState('0.00');
 
     // Modal States
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
-    const [selectorMode, setSelectorMode] = useState('from'); // 'from' or 'to'
+    const [selectorMode, setSelectorMode] = useState('from'); 
     const [isRoutesOpen, setIsRoutesOpen] = useState(false);
     const [uiError, setUiError] = useState(null);
 
-    // Settings / Flip State
+    // Settings
     const [isFlipped, setIsFlipped] = useState(false);
-    const [settingsView, setSettingsView] = useState('main'); // 'main', 'bridges', 'exchanges'
-    
-    // Tools Data (Available from API)
+    const [settingsView, setSettingsView] = useState('main');
     const [availableBridges, setAvailableBridges] = useState([]);
     const [availableExchanges, setAvailableExchanges] = useState([]);
     const [isLoadingTools, setIsLoadingTools] = useState(true);
 
-    // Preferences State
     const [slippage, setSlippage] = useState('Auto');
     const [routePriority, setRoutePriority] = useState('Best Return');
     const [gasPrice, setGasPrice] = useState('Normal');
     const [enabledBridges, setEnabledBridges] = useState([]);
     const [enabledExchanges, setEnabledExchanges] = useState([]);
 
-    // New Route Hook
     const { getRoutes, routes, activeRoute, setActiveRoute, isLoading, error } = useAggregator();
 
-    // Handlers
     const openFromSelector = () => { setSelectorMode('from'); setIsSelectorOpen(true); };
     const openToSelector = () => { setSelectorMode('to'); setIsSelectorOpen(true); };
 
@@ -62,77 +57,48 @@ const SwapCard = () => {
         setIsSelectorOpen(false);
     };
 
-    // --- Persistence ---
-    useEffect(() => {
-        const saved = localStorage.getItem('swapSettings');
-        if (saved) {
-            try {
-                const { bridges, exchanges } = JSON.parse(saved);
-                if (bridges) setEnabledBridges(bridges);
-                if (exchanges) setEnabledExchanges(exchanges);
-            } catch (e) {
-                console.error("Failed to parse settings", e);
-            }
-        }
-    }, []);
-
-    useEffect(() => {
-        if (enabledBridges.length > 0 || enabledExchanges.length > 0) {
-            localStorage.setItem('swapSettings', JSON.stringify({
-                bridges: enabledBridges,
-                exchanges: enabledExchanges
-            }));
-        }
-    }, [enabledBridges, enabledExchanges]);
-
     // --- Fetch Tools on Mount ---
     useEffect(() => {
         const loadTools = async () => {
             setIsLoadingTools(true);
             const tools = await LiFiService.getTools();
-            
-            // Extract keys for default selected state
-            const bridges = tools.bridges.map(b => b.key);
-            const exchanges = tools.exchanges.map(e => e.key);
-
             setAvailableBridges(tools.bridges);
             setAvailableExchanges(tools.exchanges);
-            
-            // Default: Enable All
-            setEnabledBridges(bridges);
-            setEnabledExchanges(exchanges);
+            setEnabledBridges(tools.bridges.map(b => b.key));
+            setEnabledExchanges(tools.exchanges.map(e => e.key));
             setIsLoadingTools(false);
         };
         loadTools();
     }, []);
 
-    // --- Balance Fetching ---
+    // --- Balance Fetching (Using Shared Provider) ---
     useEffect(() => {
         const fetchBalance = async () => {
-             if (!account) return setTokenBalance('0.00');
+             // 1. If not connected or provider missing, reset
+             if (!account || !provider) return setTokenBalance('0.00');
 
-             // Native
+             // 2. Native Token Balance
              if (sellToken.address === '0x0000000000000000000000000000000000000000') {
                  if (Number(activeChainId) === fromChain.id) {
                      setTokenBalance(nativeBalance || '0.00');
                  } else {
-                     setTokenBalance('0.00'); // Cannot read balance on wrong chain without extra provider logic
+                     setTokenBalance('0.00'); 
                  }
                  return;
              }
 
-             // ERC20
+             // 3. ERC20 Token Balance
              if (Number(activeChainId) !== fromChain.id) {
-                 setTokenBalance('0.00'); // Wait for switch
+                 setTokenBalance('0.00');
                  return;
              }
 
              try {
-                const provider = new ethers.BrowserProvider(window.okxwallet || window.ethereum);
+                // Use the SHARED provider from context. This works for ANY wallet.
                 const contract = new ethers.Contract(
                     sellToken.address,
                     ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)'],
-                    provider
+                    provider 
                 );
                 const rawBal = await contract.balanceOf(account);
                 const decimals = sellToken.decimals || await contract.decimals() || 18;
@@ -145,10 +111,10 @@ const SwapCard = () => {
         };
 
         fetchBalance();
-        const interval = setInterval(fetchBalance, 10000); // Polling balance
+        const interval = setInterval(fetchBalance, 10000); 
         return () => clearInterval(interval);
 
-    }, [sellToken, account, activeChainId, fromChain, nativeBalance]);
+    }, [sellToken, account, activeChainId, fromChain, nativeBalance, provider]);
 
     const toggleItem = (itemKey, list, setList) => {
         if (list.includes(itemKey)) {
@@ -158,11 +124,9 @@ const SwapCard = () => {
         }
     };
 
-    // --- Fetch Logic ---
+    // --- Route Fetching ---
     useEffect(() => {
         const timer = setTimeout(() => {
-            // 🛑 SAFETY GUARD: Stop if tools haven't loaded yet.
-            // This prevents the "No Route -> Route Found" glitch.
             if (isLoadingTools) return; 
 
             if (!fromAmount || parseFloat(fromAmount) === 0) {
@@ -192,18 +156,8 @@ const SwapCard = () => {
             }
         }, 600);
         return () => clearTimeout(timer);
-    }, [
-        fromAmount, sellToken, buyToken, fromChain, toChain, account, 
-        getRoutes, slippage, enabledBridges, enabledExchanges, 
-        isLoadingTools // <--- Dependency ensures it runs effectively once tools load
-    ]);
+    }, [fromAmount, sellToken, buyToken, fromChain, toChain, account, getRoutes, slippage, enabledBridges, enabledExchanges, isLoadingTools]);
 
-    // OPTIONAL: Clear UI errors immediately when inputs change to prevent stale error messages
-    useEffect(() => {
-        setUiError(null);
-    }, [fromAmount, sellToken, buyToken, fromChain, toChain]);
-
-    // Update Output
     useEffect(() => {
         if (activeRoute && buyToken) {
             const decimals = activeRoute.outputDecimals || buyToken.decimals || 18;
@@ -214,194 +168,118 @@ const SwapCard = () => {
         }
     }, [activeRoute, buyToken]);
 
-    // Network Switching
+    // --- Network Switching (Generic) ---
     const handleSwitchNetwork = async () => {
-        console.log("handleSwitchNetwork CLICKED");
-        const chainIdHex = '0x' + fromChain.id.toString(16);
+        if (!provider) return;
         setUiError(null);
-        //QP: Use the correct provider
-        const provider = window.okxwallet || window.ethereum;
+        const chainIdHex = '0x' + fromChain.id.toString(16);
         
         try {
-            await provider.request({
-                method: 'wallet_switchEthereumChain',
-                params: [{ chainId: chainIdHex }],
-            });
+            // Use provider.send to be wallet-agnostic
+            await provider.send('wallet_switchEthereumChain', [{ chainId: chainIdHex }]);
         } catch (switchError) {
-            if (switchError.code === 4902 || switchError.data?.originalError?.code === 4902) {
+            // Error 4902: Chain not added
+            if (switchError.code === 4902 || switchError.error?.code === 4902 || switchError.data?.originalError?.code === 4902) {
                 const params = CHAIN_PARAMS[fromChain.id];
                 if (!params) {
-                    setUiError('Chain parameters not found. Please add manually.');
+                    setUiError('Chain parameters not found.');
                     return;
                 }
                 try {
-                    await provider.request({
-                        method: 'wallet_addEthereumChain',
-                        params: [params],
-                    });
+                    await provider.send('wallet_addEthereumChain', [params]);
                 } catch (addError) {
-                    console.error("Failed to add chain:", addError);
-                    setUiError("Failed to add network to wallet.");
+                    setUiError("Failed to add network.");
                 }
             } else {
-                console.error("Failed to switch network:", switchError);
-                setUiError("Failed to switch network. Please switch manually.");
+                setUiError("Failed to switch network.");
             }
         }
     };
 
-    // Execute Swap
+    // --- Execute Swap (Generic) ---
     const executeSwap = async () => {
-        console.log("executeSwap CLICKED"); 
-        
         if (!account) return connectWallet();
-        if (!activeRoute) {
-            console.warn("No active route");
+        if (!activeRoute) return;
+        if (!signer) {
+            setUiError("Wallet not connected properly.");
             return;
         }
 
         try {
             setSwapStatus('initiating');
             setUiError(null);
-            
-            // Re-initialize provider to ensure freshness
-            let provider = new ethers.BrowserProvider(window.okxwallet || window.ethereum);
-            let activeSigner = await provider.getSigner(); // Get signer for current account
-            
-            if (!activeSigner) throw new Error("No signer available");
 
-            // 1. Switch Chain Check with Race Condition handling
-            const currentChain = Number((await provider.getNetwork()).chainId);
-            console.log(`[Swap] Current Chain: ${currentChain}, Required: ${fromChain.id}`);
-            
+            // 1. Check Network
+            const currentChain = Number(activeChainId);
             if (currentChain !== fromChain.id) {
-                console.log("[Swap] Switching network...");
                 await handleSwitchNetwork();
-                
-                // Polling for network change
-                let attempts = 0;
-                let switched = false;
-                while (attempts < 20) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    // Re-instantiate provider to check chain
-                    provider = new ethers.BrowserProvider(window.okxwallet || window.ethereum);
-                    const chain = Number((await provider.getNetwork()).chainId);
-                    if (chain === fromChain.id) {
-                        switched = true;
-                        break;
-                    }
-                    attempts++;
-                }
-
-                if (!switched) {
-                    throw new Error("Network switch timeout. Please try again.");
-                }
-                
-                // Re-instantiate provider after confirmed switch
-                provider = new ethers.BrowserProvider(window.okxwallet || window.ethereum);
-                activeSigner = await provider.getSigner();
+                // Wait briefly for state update
+                await new Promise(r => setTimeout(r, 1000));
             }
 
-            // 2. Approve Logic
+            // 2. Approve
             const step = activeRoute.steps[0];
             const approvalAddress = step.estimate?.approvalAddress; 
             const isNative = sellToken.address === '0x0000000000000000000000000000000000000000';
 
             if (approvalAddress && !isNative) {
+                // Use SIGNER directly
                 const tokenContract = new ethers.Contract(
                     sellToken.address,
                     ["function allowance(address,address) view returns (uint256)", "function approve(address,uint256) returns (bool)"],
-                    activeSigner
+                    signer
                 );
                 const decimals = sellToken.decimals || 18;
                 const amountWei = ethers.parseUnits(fromAmount, decimals);
                 const allowance = await tokenContract.allowance(account, approvalAddress);
                 if (allowance < amountWei) {
                     setSwapStatus('approving');
-                    try {
-                        const tx = await tokenContract.approve(approvalAddress, amountWei);
-                        await tx.wait();
-                    } catch (approveError) {
-                         throw new Error(`Approval failed: ${approveError.reason || approveError.message}`);
-                    }
+                    const tx = await tokenContract.approve(approvalAddress, amountWei);
+                    await tx.wait();
                 }
             }
 
-            // 3. Execute Transaction
+            // 3. Swap
             setSwapStatus('swapping');
-            console.log("Executing Step (Keys):", Object.keys(step));
-            
-            // Fix: Check fallback location for tx data
             let txData = step.transactionRequest || step.estimate?.transactionRequest;
             
-             // JIT Fallback: If missing, fetch from API
              if (!txData) {
-                console.log("Tx Data missing, fetching fresh transaction...");
                 try {
                     const hydratedStep = await LiFiService.getStepTransaction(step);
                     txData = hydratedStep.transactionRequest || hydratedStep.estimate?.transactionRequest;
-                    
-                    if (!txData) throw new Error("No transaction data returned from API");
-                    
-                    console.log("Fetched Fresh Tx Data:", txData);
                 } catch (fetchErr) {
-                    console.error("Failed to fetch fresh transaction:", fetchErr);
-                    throw new Error(`Failed to prepare transaction: ${fetchErr.message}`);
+                    throw new Error(`Failed to prepare transaction.`);
                 }
             }
 
-            if (!txData) {
-                const keys = Object.keys(step).join(', ');
-                console.error("Step Data Dump:", JSON.stringify(step, null, 2));
-                throw new Error(`Missing transaction request data. The route might have expired.`);
-            }
+            if (!txData) throw new Error(`Missing transaction data.`);
             
             const { from, gas, gasLimit, chainId, nonce, ...cleanTx } = txData;
-            
-            // FIX: Ensure value is 0 for ERC20 swaps unless it's a native wrapper/unwrap
             const isNativeSell = sellToken.address === '0x0000000000000000000000000000000000000000';
             const val = isNativeSell ? (txData.value ? BigInt(txData.value) : 0n) : 0n;
             
-            let limit = 500000n; // Default fallback
-            console.log("Sending TX:", { ...cleanTx, value: val });
-            if (txData.gasLimit) {
-                limit = (BigInt(txData.gasLimit) * 125n) / 100n;
-            }
-
-            console.log("Sending TX:", { ...cleanTx, value: val, gasLimit: limit });
-
-            try {
-                const tx = await activeSigner.sendTransaction({
-                    ...cleanTx,
-                    value: val,
-                    gasLimit: limit
-                });
-                
-                await tx.wait();
-                setSwapStatus('idle');
-                setFromAmount('');
-                setActiveRoute(null);
-                setUiError(null); 
-                // Optional: Show success message/toast here
-            } catch (sendError) {
-                 throw sendError;
-            }
+            // Use SIGNER directly - Works with any wallet
+            const tx = await signer.sendTransaction({
+                ...cleanTx,
+                value: val,
+                // Let wallet estimate gas if needed, or use a buffer
+                // gasLimit: (BigInt(txData.gasLimit || 500000) * 125n) / 100n 
+            });
+            
+            await tx.wait();
+            setSwapStatus('idle');
+            setFromAmount('');
+            setActiveRoute(null);
+            setUiError(null); 
 
         } catch (err) {
             setSwapStatus('idle');
-            console.error("Swap Error Full:", err);
-            let msg = err.message || "Transaction failed";
-            if (err.info?.error?.message) msg = err.info.error.message;
-            if (err.code === 'ACTION_REJECTED') msg = "User rejected transaction";
-            if (msg.includes('insufficient funds')) msg = "Insufficient funds for gas";
-            if (msg.includes('Network switch failed')) msg = "Network switch required to swap";
-
-            console.error("Swap Error Logic:", msg);
-            setUiError(msg);
+            console.error(err);
+            setUiError(err.message || "Transaction failed");
         }
     };
 
-    // Helper for Asset Rows
+    // ... Helper Components ...
     const AssetRow = ({ label, chain, token, onClick, amount, isLoading }) => (
         <div 
             onClick={onClick}
@@ -439,8 +317,6 @@ const SwapCard = () => {
         </div>
     );
 
-    // Derived Button State
-
     const hasInsufficientBalance = React.useMemo(() => {
         if (!fromAmount || !tokenBalance) return false;
         return parseFloat(fromAmount) > parseFloat(tokenBalance);
@@ -458,7 +334,6 @@ const SwapCard = () => {
         return 'Review & Swap';
     };
 
-    // Sub-Components for Settings
     const SettingItem = ({ icon: Icon, label, value, onClick }) => (
         <div 
             onClick={onClick}
@@ -536,7 +411,7 @@ const SwapCard = () => {
                             WebkitBackfaceVisibility: 'hidden',
                             background: 'linear-gradient(145deg, #0a0a0a, #121212)', borderRadius: '24px', padding: '24px', paddingBottom: '32px',
                             display: 'flex', flexDirection: 'column',
-                            pointerEvents: isFlipped ? 'none' : 'auto', // Disable when flipped
+                            pointerEvents: isFlipped ? 'none' : 'auto', 
                             boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)'
                         }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -699,7 +574,7 @@ const SwapCard = () => {
                             transform: 'rotateY(180deg)',
                             background: '#0a0a0a', borderRadius: '24px', padding: '24px',
                             display: 'flex', flexDirection: 'column',
-                            pointerEvents: isFlipped ? 'auto' : 'none' // Enable only when flipped
+                            pointerEvents: isFlipped ? 'auto' : 'none' 
                         }}>
                             {/* Settings Header */}
                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', position: 'relative' }}>
