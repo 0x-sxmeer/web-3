@@ -37,11 +37,10 @@ export const useAggregator = () => {
                 fromAddress: userAddress || '0x0000000000000000000000000000000000000000',
                 options: { 
                     slippage: slippage,
-                    integrator: 'chaingpt-labs-replica', // <--- REQUIRED for stable results
-                    order: 'RECOMMENDED',
-                    // Fix: Ensure we don't send { allow: [] } which blocks all bridges
-                    bridges: allowBridges && allowBridges.length > 0 ? { allow: allowBridges } : undefined,
-                    exchanges: allowExchanges && allowExchanges.length > 0 ? { allow: allowExchanges } : undefined
+                    integrator: 'chaingpt-labs-replica', // <--- ADD THIS
+                    order: 'RECOMMENDED',               // <--- ADD THIS
+                    bridges: allowBridges.length > 0 ? { allow: allowBridges } : undefined,
+                    exchanges: allowExchanges.length > 0 ? { allow: allowExchanges } : undefined
                 }
             };
 

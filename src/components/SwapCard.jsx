@@ -161,8 +161,8 @@ const SwapCard = () => {
     // --- Fetch Logic ---
     useEffect(() => {
         const timer = setTimeout(() => {
-            // 🛑 STOP: Do not fetch if we are still loading settings.
-            // This prevents the "empty list" request that causes the instability.
+            // 🛑 SAFETY GUARD: Stop if tools haven't loaded yet.
+            // This prevents the "No Route -> Route Found" glitch.
             if (isLoadingTools) return; 
 
             if (!fromAmount || parseFloat(fromAmount) === 0) {
@@ -195,7 +195,7 @@ const SwapCard = () => {
     }, [
         fromAmount, sellToken, buyToken, fromChain, toChain, account, 
         getRoutes, slippage, enabledBridges, enabledExchanges, 
-        isLoadingTools // <--- Dependency is required here
+        isLoadingTools // <--- Dependency ensures it runs effectively once tools load
     ]);
 
     // OPTIONAL: Clear UI errors immediately when inputs change to prevent stale error messages
