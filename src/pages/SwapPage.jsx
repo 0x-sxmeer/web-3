@@ -4,6 +4,7 @@ import Footer from '../components/Footer';
 import FloatingBubbles from '../components/FloatingBubbles';
 import SwapCard from '../components/SwapCard';
 import { Reveal } from '../components/Animations';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 const SwapPage = () => {
     return (
@@ -35,7 +36,9 @@ const SwapPage = () => {
                         </Reveal>
 
                         <Reveal delay={0.2} width="100%">
-                            <SwapCard />
+                            <ErrorBoundary>
+                                <SwapCard />
+                            </ErrorBoundary>
                         </Reveal>
                    </div>
                 </main>

@@ -13,9 +13,15 @@ const TokenSelector = ({ selectedToken, onSelect, chainId, children }) => {
         if (isOpen && chainId) {
             const loadTokens = async () => {
                 setIsLoading(true);
-                const tokens = await LiFiService.getTokens(chainId);
-                setTokenList(tokens);
-                setIsLoading(false);
+                try {
+                    const tokens = await LiFiService.getTokens(chainId);
+                    setTokenList(tokens);
+                } catch (e) {
+                    console.error("Failed to load tokens", e);
+                    setTokenList([]);
+                } finally {
+                    setIsLoading(false);
+                }
             };
             loadTokens();
         }

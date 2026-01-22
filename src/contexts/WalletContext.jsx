@@ -64,7 +64,7 @@ export const WalletProvider = ({ children }) => {
           // Re-init signer/provider/balance
           const _provider = new ethers.BrowserProvider(window.ethereum);
           setProvider(_provider);
-          const _signer = await _provider.getSigner();
+          const _signer = await _provider.getSigner(accounts[0]);
           setSigner(_signer);
           
           const network = await _provider.getNetwork();
@@ -105,7 +105,7 @@ export const WalletProvider = ({ children }) => {
         window.ethereum.removeAllListeners();
       }
     };
-  }, []);
+  }, [account]);
 
   const connectWallet = async () => {
     setIsConnecting(true);

@@ -11,8 +11,12 @@ const ChainSelector = ({ selectedChain, onSelect, children }) => {
     // Fetch Chains on Mount
     useEffect(() => {
         const load = async () => {
-            const list = await LiFiService.getChains();
-            setChains(list);
+            try {
+                const list = await LiFiService.getChains();
+                setChains(list);
+            } catch (e) {
+                console.error("Failed to load chains", e);
+            }
         };
         load();
     }, []);

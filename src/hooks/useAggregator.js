@@ -34,7 +34,7 @@ export const useAggregator = () => {
                 toTokenAddress: normalizeToken(buyToken),
                 fromAmount: amount, 
                 // Use a dummy non-zero address if not connected, as some providers fail with 0x0
-                fromAddress: userAddress || '0x5555555555555555555555555555555555555555',
+                fromAddress: userAddress || '0x0000000000000000000000000000000000000000',
                 options: { 
                     slippage: slippage,
                     order: 'RECOMMENDED'
@@ -43,7 +43,7 @@ export const useAggregator = () => {
 
             console.log("Fetching Routes Payload:", JSON.stringify(payload));
 
-            // Use /advanced/routes which is the robust POST endpoint
+            // Use /api/lifi/advanced/routes to utilize the Vite proxy (handles CORS + API Key)
             const getResponse = await fetch('/api/lifi/advanced/routes', {
                 method: 'POST',
                 headers: {
