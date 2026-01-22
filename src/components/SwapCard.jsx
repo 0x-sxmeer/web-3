@@ -6,6 +6,8 @@ import { useWallet } from '../contexts/WalletContext';
 import CombinedSelector from './CombinedSelector';
 import RouteSelector from './RouteSelector';
 import { ethers } from 'ethers';
+import { CHAIN_PARAMS } from '../constants/chains';
+import { LiFiService } from '../services/lifiService';
 
 const SwapCard = () => {
     const { account, balance, connectWallet, signer } = useWallet();
@@ -23,6 +25,7 @@ const SwapCard = () => {
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
     const [selectorMode, setSelectorMode] = useState('from'); // 'from' or 'to'
     const [isRoutesOpen, setIsRoutesOpen] = useState(false);
+    const [uiError, setUiError] = useState(null);
 
     // New Route Hook
     const { getRoutes, routes, activeRoute, setActiveRoute, isLoading, error } = useAggregator();
@@ -86,28 +89,44 @@ const SwapCard = () => {
     }, [activeRoute, buyToken]);
 
     const executeSwap = async () => {
-        if (!account) return connectWallet();
-        if (!activeRoute) return;
+        console.log("executeSwap CLICKED"); // DEBUG
+        // alert("executeSwap CLICKED"); // DEBUG - Uncomment if console is ignored
+        
+        if (!account) {
+            console.log("No account, connecting...");
+            return connectWallet();
+        }
+        if (!activeRoute) {
+            console.warn("No active route");
+            return;
+        }
 
         try {
             setSwapStatus('initiating');
             let activeSigner = signer;
+            
+            if (!activeSigner) {
+                 // Try to recover signer
+                 const provider = new ethers.BrowserProvider(window.ethereum);
+                 activeSigner = await provider.getSigner();
+                 if (!activeSigner) throw new Error("No signer available");
+            }
 
-            // 1. Switch Chain
-            const currentChain = Number((await signer.provider.getNetwork()).chainId);
+            // 1. Switch Chain Check
+            const currentChain = Number((await activeSigner.provider.getNetwork()).chainId);
+            console.log(`[Swap] Current Chain: ${currentChain}, Required: ${fromChain.id}`);
+            
             if (currentChain !== fromChain.id) {
-                try {
-                    await window.ethereum.request({
-                        method: 'wallet_switchEthereumChain',
-                        params: [{ chainId: '0x' + fromChain.id.toString(16) }],
-                    });
-                    const newProvider = new ethers.BrowserProvider(window.ethereum);
-                    activeSigner = await newProvider.getSigner();
-                } catch (e) {
-                    alert(`Please switch network to ${fromChain.name}.`);
-                    setSwapStatus('idle');
-                    return;
+                console.log("[Swap] Switching network...");
+                await handleSwitchNetwork();
+                // Re-check chain after switch attempt
+                const updatedChain = Number((await signer.provider.getNetwork()).chainId);
+                if (updatedChain !== fromChain.id) {
+                    throw new Error("Network switch failed or was rejected");
                 }
+                // Update signer after switch
+                const newProvider = new ethers.BrowserProvider(window.ethereum);
+                activeSigner = await newProvider.getSigner();
             }
 
             // 2. Approve Logic
@@ -133,23 +152,41 @@ const SwapCard = () => {
 
             // 3. Execute Transaction
             setSwapStatus('swapping');
-            console.log("Executing Step (Full Object):", JSON.stringify(step, null, 2)); // DEBUG: Dump full step
+            console.log("Executing Step (Keys):", Object.keys(step));
+            if (step.estimate) console.log("Estimate Keys:", Object.keys(step.estimate));
+            if (step.action) console.log("Action Keys:", Object.keys(step.action));
             
             // LI.FI routes puts tx data in 'transactionRequest'
             // Fallback: Check step.estimate.transactionRequest (some providers nest it)
-            const txData = step.transactionRequest || step.estimate?.transactionRequest;
+            // Fallback 2: Check step.transactionRequest 
+            let txData = step.transactionRequest || step.estimate?.transactionRequest;
+            
+            // JIT Fallback: If missing, fetch from API
+            if (!txData) {
+                console.log("Tx Data missing, fetching fresh transaction...");
+                try {
+                    const hydratedStep = await LiFiService.getStepTransaction(step);
+                    txData = hydratedStep.transactionRequest || hydratedStep.estimate?.transactionRequest;
+                    console.log("Fetched Fresh Tx Data:", txData);
+                } catch (fetchErr) {
+                    console.error("Failed to fetch fresh transaction:", fetchErr);
+                }
+            }
             
             if (!txData) {
                 const keys = Object.keys(step).join(', ');
+                console.error("Step Data Dump:", JSON.stringify(step, null, 2));
                 throw new Error(`Missing transaction request data. Available keys: [${keys}]`);
             }
             
             const { from, gas, gasLimit, chainId, nonce, ...cleanTx } = txData;
             const val = txData.value ? BigInt(txData.value) : 0n;
             
-            // Safer Gas Limit (150% of estimate)
-            let limit = 500000n;
-            if (gasLimit) limit = (BigInt(gasLimit) * 150n) / 100n;
+            // Safer Gas Limit (125% of estimate)
+            let limit = 500000n; // Default fallback
+            if (txData.gasLimit) {
+                limit = (BigInt(txData.gasLimit) * 125n) / 100n; // Add 25% buffer
+            }
 
             console.log("Sending TX:", { ...cleanTx, value: val, gasLimit: limit });
 
@@ -163,20 +200,23 @@ const SwapCard = () => {
             setSwapStatus('idle');
             // alert(`Success! Tx: ${tx.hash}`); // Replaced with UI success state if needed, or clear form
             setFromAmount('');
+            setFromAmount('');
             setActiveRoute(null);
-            setError(null); // Clear errors
+            setUiError(null); // Clear errors
         } catch (err) {
             setSwapStatus('idle');
-            console.error("Swap Error:", err);
+            console.error("Swap Error Full:", err);
             
             // Extract meaningful error message
             let msg = err.message || "Transaction failed";
             if (err.info?.error?.message) msg = err.info.error.message;
             if (err.code === 'ACTION_REJECTED') msg = "User rejected transaction";
             if (msg.includes('insufficient funds')) msg = "Insufficient funds for gas";
+            if (msg.includes('Network switch failed')) msg = "Network switch required to swap";
 
+            console.error("Swap Error Logic:", msg);
             // Set UI Error instead of alert
-            setError(msg);
+            setUiError(msg);
         }
     };
 
@@ -223,16 +263,62 @@ const SwapCard = () => {
         </div>
     );
     
+    // Network Switching Logic
+    const handleSwitchNetwork = async () => {
+        console.log("handleSwitchNetwork CLICKED");
+        const chainIdHex = '0x' + fromChain.id.toString(16);
+        
+        try {
+            await window.ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: chainIdHex }],
+            });
+        } catch (switchError) {
+            // This error code indicates that the chain has not been added to MetaMask.
+            if (switchError.code === 4902 || switchError.data?.originalError?.code === 4902) {
+                const params = CHAIN_PARAMS[fromChain.id];
+                if (!params) {
+                    alert('Chain parameters not found. Please add manually.');
+                    return;
+                }
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_addEthereumChain',
+                        params: [params],
+                    });
+                } catch (addError) {
+                    console.error("Failed to add chain:", addError);
+                    alert("Failed to add network to wallet.");
+                }
+            } else {
+                console.error("Failed to switch network:", switchError);
+                alert("Failed to switch network. Please switch manually.");
+            }
+        }
+    };
+
     // Derived Button State
     const getButtonText = () => {
         if (swapStatus !== 'idle') return swapStatus.toUpperCase() + '...';
         if (isLoading) return 'Fetching Routes...';
-        // if (error) return 'Errors Above'; // Don't block button text with error
+        if (uiError || error) return 'Try Again';
+        
+        // Network Check
+        if (account && signer) {
+             // We can retrieve chainId from context, but checking against current `fromChain` logic
+             // Ideally use chainId from useWallet, but let's check safety
+             // For UI purposes, we rely on the user clicking "Switch".
+        }
+
         if (!activeRoute) return 'Enter Amount';
         return 'Review & Swap';
     };
 
-    const isButtonDisabled = isLoading || swapStatus !== 'idle' || (!activeRoute && !error); 
+    // Network Mismatch Check
+    const activeChainId = useWallet().chainId;
+    const isWrongNetwork = account && activeChainId && (Number(activeChainId) !== fromChain.id);
+
+    const isButtonDisabled = isLoading || swapStatus !== 'idle' || (!activeRoute && !uiError && !error && !isWrongNetwork); 
 
     return (
         <div style={{ maxWidth: '440px', width: '100%', margin: '0 auto', fontFamily: '"Inter", sans-serif' }}>
@@ -342,20 +428,36 @@ const SwapCard = () => {
                         {/* Connect Wallet / Action */}
                         <div style={{ marginTop: '8px' }}>
                              {account ? (
-                                <button 
-                                    onClick={executeSwap}
-                                    disabled={isButtonDisabled}
-                                    style={{
-                                        width: '100%',
-                                        background: (isButtonDisabled) ? '#1f1f1f' : 'linear-gradient(90deg, #FF7120 0%, #FF4500 100%)',
-                                        color: (isButtonDisabled) ? '#555' : 'white',
-                                        border: 'none', borderRadius: '16px', padding: '16px',
-                                        fontSize: '1.2rem', fontWeight: 700,
-                                        cursor: (isButtonDisabled) ? 'not-allowed' : 'pointer',
-                                    }}
-                                >
-                                    {getButtonText()}
-                                </button>
+                                isWrongNetwork ? (
+                                    <button 
+                                        onClick={handleSwitchNetwork}
+                                        style={{
+                                            width: '100%',
+                                            background: '#ffcc00',
+                                            color: 'black',
+                                            border: 'none', borderRadius: '16px', padding: '16px',
+                                            fontSize: '1.2rem', fontWeight: 700,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        Switch to {fromChain.name}
+                                    </button>
+                                ) : (
+                                    <button 
+                                        onClick={executeSwap}
+                                        disabled={isButtonDisabled}
+                                        style={{
+                                            width: '100%',
+                                            background: (isButtonDisabled) ? '#1f1f1f' : 'linear-gradient(90deg, #FF7120 0%, #FF4500 100%)',
+                                            color: (isButtonDisabled) ? '#555' : 'white',
+                                            border: 'none', borderRadius: '16px', padding: '16px',
+                                            fontSize: '1.2rem', fontWeight: 700,
+                                            cursor: (isButtonDisabled) ? 'not-allowed' : 'pointer',
+                                        }}
+                                    >
+                                        {getButtonText()}
+                                    </button>
+                                )
                              ) : (
                                  <button 
                                     onClick={connectWallet}
@@ -395,13 +497,13 @@ const SwapCard = () => {
             />
             
             {/* Error Toast / Message Area - VISIBLE ERROR BOX */}
-            {error && (
+            {(uiError || error) && (
                 <div style={{ 
                     marginTop: '16px', textAlign: 'center', padding: '12px', 
                     background: 'rgba(255, 50, 50, 0.15)', border: '1px solid rgba(255, 50, 50, 0.3)',
                     color: '#ff6666', borderRadius: '16px', fontSize: '0.9rem', fontWeight: 500 
                 }}>
-                    ⚠️ {error}
+                    ⚠️ {uiError || error}
                 </div>
             )}
         </div>

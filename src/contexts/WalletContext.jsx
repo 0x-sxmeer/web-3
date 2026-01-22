@@ -79,8 +79,24 @@ export const WalletProvider = ({ children }) => {
         }
       });
 
-      window.ethereum.on('chainChanged', () => {
-        window.location.reload();
+      window.ethereum.on('chainChanged', async (chainId) => {
+        // Update state directly without reloading
+        const _provider = new ethers.BrowserProvider(window.ethereum);
+        setProvider(_provider);
+        
+        try {
+            const _signer = await _provider.getSigner();
+            setSigner(_signer);
+            
+            const network = await _provider.getNetwork();
+            setChainId(network.chainId);
+            
+            if (account) {
+                updateBalance(account, _provider);
+            }
+        } catch (error) {
+            console.error("Failed to update wallet state on chain change:", error);
+        }
       });
     }
 

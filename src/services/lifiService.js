@@ -57,5 +57,27 @@ export const LiFiService = {
             console.error("Token Fetch Error:", error);
             return [];
         }
+    },
+
+    // 3. Fetch Transaction Data for a specific step (Just-in-Time)
+    getStepTransaction: async (step) => {
+        try {
+            const response = await fetch('/api/lifi/advanced/stepTransaction', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(step)
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || "Failed to fetch step transaction");
+            }
+
+            const data = await response.json();
+            return data; // Should return the updated step with transactionRequest
+        } catch (error) {
+            console.error("Step Transaction Error:", error);
+            throw error;
+        }
     }
 };
