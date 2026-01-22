@@ -56,6 +56,7 @@ const CombinedSelector = ({ isOpen, onClose, title, selectedChain, selectedToken
     // Handlers
     const handleChainClick = (chain) => {
         setActiveChain(chain);
+        setTokens([]); // Clear previous tokens immediately to prevent mismatch clicks
         setSearchQuery(''); // Reset search when switching chains
     };
 

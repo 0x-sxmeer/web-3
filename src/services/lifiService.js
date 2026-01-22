@@ -21,15 +21,7 @@ export const LiFiService = {
             return chains;
         } catch (error) {
             console.error("Chain Fetch Error:", error);
-            // Fallback to basic chains if API fails
-            return [
-                { id: 1, name: 'Ethereum', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/ethereum.svg' },
-                { id: 137, name: 'Polygon', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/polygon.svg' },
-                { id: 42161, name: 'Arbitrum', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/arbitrum.svg' },
-                { id: 10, name: 'Optimism', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/optimism.svg' },
-                { id: 8453, name: 'Base', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/base.svg' },
-                { id: 1151111081099710, name: 'Solana', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/solana.svg' }
-            ];
+            return [];
         }
     },
 
@@ -59,7 +51,30 @@ export const LiFiService = {
         }
     },
 
-    // 3. Fetch Transaction Data for a specific step (Just-in-Time)
+    // 3. Fetch Tools (Bridges & Exchanges) [NEW]
+    getTools: async () => {
+        if (cache.tools) return cache.tools;
+
+        try {
+            const response = await fetch('/api/lifi/tools');
+            if (!response.ok) throw new Error('Failed to fetch tools');
+            
+            const data = await response.json();
+            // LI.FI returns { bridges: [...], exchanges: [...] }
+            const tools = {
+                bridges: data.bridges || [],
+                exchanges: data.exchanges || []
+            };
+
+            cache.tools = tools;
+            return tools;
+        } catch (error) {
+            console.error("Tools Fetch Error:", error);
+            return { bridges: [], exchanges: [] };
+        }
+    },
+
+    // 4. Fetch Transaction Data for a Step
     getStepTransaction: async (step) => {
         try {
             const response = await fetch('/api/lifi/advanced/stepTransaction', {
@@ -69,14 +84,14 @@ export const LiFiService = {
             });
 
             if (!response.ok) {
-                const text = await response.text();
-                throw new Error(text || "Failed to fetch step transaction");
+                 const errText = await response.text();
+                 throw new Error(`Failed to fetch step transaction: ${errText}`);
             }
 
             const data = await response.json();
-            return data; // Should return the updated step with transactionRequest
+            return data;
         } catch (error) {
-            console.error("Step Transaction Error:", error);
+            console.error("Step Transaction Fetch Error:", error);
             throw error;
         }
     }

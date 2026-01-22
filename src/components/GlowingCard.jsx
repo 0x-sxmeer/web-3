@@ -12,7 +12,7 @@ export const GlowingCard = ({
     movementDuration = 2,
     inactiveZone = 0.01,
     gradient = null, // Optional custom gradient
-    glowColor = null, // Optional custom glow color (for drop-shadow)
+    contentStyle = {}, // Optional style override for content
 }) => {
     const containerRef = useRef(null);
     const borderRef = useRef(null);
@@ -140,7 +140,7 @@ export const GlowingCard = ({
                '--gradient': rgbGradient,
              }}
            />
-           <div className="glowing-card-content">
+           <div className="glowing-card-content" style={contentStyle}>
                {children}
            </div>
         </div>
