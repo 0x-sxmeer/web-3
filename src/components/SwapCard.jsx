@@ -254,17 +254,19 @@ const SwapCard = () => {
 
             if (!txData) throw new Error(`Missing transaction data.`);
             
-            const { from, gas, gasLimit, chainId, nonce, ...cleanTx } = txData;
+            // FIX: Remove gasPrice fields so the wallet can set the current market rate.
+            // Also remove 'gas' and 'gasLimit' to set our own buffer.
+            const { from, gas, gasLimit, chainId, nonce, gasPrice, maxFeePerGas, maxPriorityFeePerGas, ...cleanTx } = txData;
+
             const isNativeSell = sellToken.address === '0x0000000000000000000000000000000000000000';
             const val = isNativeSell ? (txData.value ? BigInt(txData.value) : 0n) : 0n;
-            
-            // Use SIGNER directly - Works with any wallet
+
+            // FIX: Send transaction WITHOUT gasPrice (let wallet handle it) and WITH a gas buffer
             const tx = await signer.sendTransaction({
                 ...cleanTx,
                 value: val,
-                // FIX: Increase default gas to 800,000 and the buffer to 200% (2x)
-                // This forces the wallet to accept the transaction even if it looks complex.
-                gasLimit: (BigInt(txData.gasLimit || 800000) * 200n) / 100n 
+                // Add 50% buffer to the API's gas estimate to prevent "out of gas" errors
+                gasLimit: (BigInt(txData.gasLimit || 500000) * 150n) / 100n 
             });
             
             await tx.wait();
