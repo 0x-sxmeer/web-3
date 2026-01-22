@@ -13,6 +13,7 @@ export const GlowingCard = ({
     inactiveZone = 0.01,
     gradient = null, // Optional custom gradient
     contentStyle = {}, // Optional style override for content
+    glowColor = null,
 }) => {
     const containerRef = useRef(null);
     const borderRef = useRef(null);

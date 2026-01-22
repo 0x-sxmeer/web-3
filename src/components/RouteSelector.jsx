@@ -71,7 +71,11 @@ const RouteSelector = ({ routes, selectedRoute, onSelect, isOpen, onClose }) => 
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '10px' }}>
                                     <div style={{ display: 'flex', gap: '12px', fontSize: '0.85rem', color: '#888' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <Fuel size={14} /> ${route.gasCostUsd ? parseFloat(route.gasCostUsd).toFixed(2) : '0.00'}
+                                            <Fuel size={14} /> 
+                                            <span title="Estimated Network Fee. Wallets may show higher limits.">
+                                                ${route.gasCostUsd ? (parseFloat(route.gasCostUsd) * 1.1).toFixed(2) : '0.00'} 
+                                            </span>
+                                            <span style={{fontSize: '0.7em', color: '#666'}}>(Est.)</span>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                             <Clock size={14} /> ~2 min

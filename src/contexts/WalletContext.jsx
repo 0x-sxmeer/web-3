@@ -53,59 +53,78 @@ export const WalletProvider = ({ children }) => {
       }
     }
   };
-
   useEffect(() => {
-    initProvider();
+        const initProvider = async () => {
+            if (window.ethereum) {
+                const _provider = new ethers.BrowserProvider(window.ethereum);
+                setProvider(_provider);
+                
+                // --- Event Handlers ---
+                const handleAccountsChanged = async (accounts) => {
+                    if (accounts.length > 0) {
+                        setAccount(accounts[0]);
+                        // Re-fetch signer for new account
+                        const _signer = await _provider.getSigner();
+                        setSigner(_signer);
+                        updateBalance(accounts[0], _provider);
+                    } else {
+                        setAccount(null);
+                        setSigner(null);
+                        setBalance(null);
+                    }
+                };
 
-    if (window.ethereum) {
-      window.ethereum.on('accountsChanged', async (accounts) => {
-        if (accounts.length > 0) {
-          setAccount(accounts[0]);
-          // Re-init signer/provider/balance
-          const _provider = new ethers.BrowserProvider(window.ethereum);
-          setProvider(_provider);
-          const _signer = await _provider.getSigner(accounts[0]);
-          setSigner(_signer);
-          
-          const network = await _provider.getNetwork();
-          setChainId(network.chainId);
+                const handleChainChanged = async (chainIdHex) => {
+                    const id = parseInt(chainIdHex, 16);
+                    setChainId(id);
+                    
+                    // Hot-Update Provider & Signer instead of reloading
+                    const _provider = new ethers.BrowserProvider(window.ethereum);
+                    setProvider(_provider);
+                    
+                    try {
+                        const _signer = await _provider.getSigner();
+                        setSigner(_signer);
+                        const _address = await _signer.getAddress();
+                        setAccount(_address);
+                        updateBalance(_address, _provider);
+                    } catch (e) {
+                         console.error("Failed to update wallet state after chain switch", e);
+                    }
+                };
 
-          await updateBalance(accounts[0], _provider);
+                // Attach Listeners
+                window.ethereum.on('accountsChanged', handleAccountsChanged);
+                window.ethereum.on('chainChanged', handleChainChanged);
 
-        } else {
-          setAccount(null);
-          setSigner(null);
-          setBalance('0.00');
-        }
-      });
+                // Initial Check
+                try {
+                    const accounts = await _provider.listAccounts();
+                    if (accounts.length > 0) {
+                         const currentAccount = accounts[0].address;
+                         setAccount(currentAccount);
+                         const _signer = await _provider.getSigner();
+                         setSigner(_signer);
+                         updateBalance(currentAccount, _provider);
+                    }
+                    const network = await _provider.getNetwork();
+                    setChainId(Number(network.chainId));
+                } catch (e) {
+                    console.error("Initialization Error:", e);
+                }
 
-      window.ethereum.on('chainChanged', async (chainId) => {
-        // Update state directly without reloading
-        const _provider = new ethers.BrowserProvider(window.ethereum);
-        setProvider(_provider);
-        
-        try {
-            const _signer = await _provider.getSigner();
-            setSigner(_signer);
-            
-            const network = await _provider.getNetwork();
-            setChainId(network.chainId);
-            
-            if (account) {
-                updateBalance(account, _provider);
+                // Cleanup
+                return () => {
+                    window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+                    window.ethereum.removeListener('chainChanged', handleChainChanged);
+                };
             }
-        } catch (error) {
-            console.error("Failed to update wallet state on chain change:", error);
-        }
-      });
-    }
 
-    return () => {
-      if (window.ethereum) {
-        window.ethereum.removeAllListeners();
-      }
-    };
-  }, [account]);
+        };
+
+        initProvider();
+    }, []);
+
 
   const connectWallet = async () => {
     setIsConnecting(true);

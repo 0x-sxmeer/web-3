@@ -10,16 +10,17 @@ import { CHAIN_PARAMS } from '../constants/chains';
 import { LiFiService } from '../services/lifiService';
 
 const SwapCard = () => {
-    const { account, balance, connectWallet, signer, chainId: activeChainId } = useWallet();
+    const { account, balance: nativeBalance, connectWallet, signer, chainId: activeChainId } = useWallet();
     
     // Core Swap State
     const [fromChain, setFromChain] = useState({ id: 1, name: 'Ethereum', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/ethereum.svg' });
     const [toChain, setToChain] = useState({ id: 10, name: 'Optimism', logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/optimism.svg' });
     const [sellToken, setSellToken] = useState({ symbol: 'ETH', name: 'Ethereum', address: '0x0000000000000000000000000000000000000000', decimals: 18, logoURI: 'https://raw.githubusercontent.com/lifinance/types/main/src/assets/icons/chains/ethereum.svg' });
-    const [buyToken, setBuyToken] = useState({ symbol: 'USDC', name: 'USD Coin', address: '0x0b2c639c533813f4aa9d7837caf62653d097ff85', decimals: 6, logoURI: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' });
+    const [buyToken, setBuyToken] = useState({ symbol: 'USDC', name: 'USD Coin', address: '0x0b2c639c535313529b233428320e6d900630fded', decimals: 6, logoURI: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png' });
     const [fromAmount, setFromAmount] = useState('');
     const [toAmount, setToAmount] = useState('');
     const [swapStatus, setSwapStatus] = useState('idle');
+    const [tokenBalance, setTokenBalance] = useState('0.00'); // Display balance (formatted)
 
     // Modal States
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
@@ -58,7 +59,31 @@ const SwapCard = () => {
             setToChain(chain);
             setBuyToken(token);
         }
+        setIsSelectorOpen(false);
     };
+
+    // --- Persistence ---
+    useEffect(() => {
+        const saved = localStorage.getItem('swapSettings');
+        if (saved) {
+            try {
+                const { bridges, exchanges } = JSON.parse(saved);
+                if (bridges) setEnabledBridges(bridges);
+                if (exchanges) setEnabledExchanges(exchanges);
+            } catch (e) {
+                console.error("Failed to parse settings", e);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (enabledBridges.length > 0 || enabledExchanges.length > 0) {
+            localStorage.setItem('swapSettings', JSON.stringify({
+                bridges: enabledBridges,
+                exchanges: enabledExchanges
+            }));
+        }
+    }, [enabledBridges, enabledExchanges]);
 
     // --- Fetch Tools on Mount ---
     useEffect(() => {
@@ -80,6 +105,50 @@ const SwapCard = () => {
         };
         loadTools();
     }, []);
+
+    // --- Balance Fetching ---
+    useEffect(() => {
+        const fetchBalance = async () => {
+             if (!account) return setTokenBalance('0.00');
+
+             // Native
+             if (sellToken.address === '0x0000000000000000000000000000000000000000') {
+                 if (Number(activeChainId) === fromChain.id) {
+                     setTokenBalance(nativeBalance || '0.00');
+                 } else {
+                     setTokenBalance('0.00'); // Cannot read balance on wrong chain without extra provider logic
+                 }
+                 return;
+             }
+
+             // ERC20
+             if (Number(activeChainId) !== fromChain.id) {
+                 setTokenBalance('0.00'); // Wait for switch
+                 return;
+             }
+
+             try {
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const contract = new ethers.Contract(
+                    sellToken.address,
+                    ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)'],
+                    provider
+                );
+                const rawBal = await contract.balanceOf(account);
+                const decimals = sellToken.decimals || await contract.decimals() || 18;
+                const formatted = ethers.formatUnits(rawBal, decimals);
+                setTokenBalance(parseFloat(formatted).toFixed(6));
+             } catch (e) {
+                 console.error("Failed to fetch ERC20 balance:", e);
+                 setTokenBalance('0.00');
+             }
+        };
+
+        fetchBalance();
+        const interval = setInterval(fetchBalance, 10000); // Polling balance
+        return () => clearInterval(interval);
+
+    }, [sellToken, account, activeChainId, fromChain, nativeBalance]);
 
     const toggleItem = (itemKey, list, setList) => {
         if (list.includes(itemKey)) {
@@ -103,21 +172,23 @@ const SwapCard = () => {
                 const decimals = sellToken.decimals || 18;
                 const amountWei = ethers.parseUnits(fromAmount, decimals).toString();
                 
-                getRoutes({
+                    getRoutes({
                     sellToken: sellToken.address,
                     buyToken: buyToken.address,
                     amount: amountWei,
                     userAddress: account,
                     fromChain: fromChain.id,
                     toChain: toChain.id,
-                    slippage: Object.is(parseFloat(slippage), NaN) ? 0.005 : parseFloat(slippage) / 100 // Convert % to decimal
+                    slippage: (slippage === 'Auto' || isNaN(parseFloat(slippage))) ? 0.005 : parseFloat(slippage) / 100,
+                    allowBridges: enabledBridges,
+                    allowExchanges: enabledExchanges
                 });
             } catch (e) { 
                 console.error("Input Parsing Error:", e);
             }
         }, 600);
         return () => clearTimeout(timer);
-    }, [fromAmount, sellToken, buyToken, fromChain, toChain, account, getRoutes, slippage]);
+    }, [fromAmount, sellToken, buyToken, fromChain, toChain, account, getRoutes, slippage, enabledBridges, enabledExchanges]);
 
     // Update Output
     useEffect(() => {
@@ -192,17 +263,28 @@ const SwapCard = () => {
                 console.log("[Swap] Switching network...");
                 await handleSwitchNetwork();
                 
-                // Wait for network switch to propagate
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // Polling for network change
+                let attempts = 0;
+                let switched = false;
+                while (attempts < 20) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    // Re-instantiate provider to check chain
+                    provider = new ethers.BrowserProvider(window.ethereum);
+                    const chain = Number((await provider.getNetwork()).chainId);
+                    if (chain === fromChain.id) {
+                        switched = true;
+                        break;
+                    }
+                    attempts++;
+                }
+
+                if (!switched) {
+                    throw new Error("Network switch timeout. Please try again.");
+                }
                 
-                // Re-instantiate provider after switch
+                // Re-instantiate provider after confirmed switch
                 provider = new ethers.BrowserProvider(window.ethereum);
                 activeSigner = await provider.getSigner();
-
-                const updatedChain = Number((await provider.getNetwork()).chainId);
-                if (updatedChain !== fromChain.id) {
-                    throw new Error("Network switch failed. Please select the correct network in your wallet.");
-                }
             }
 
             // 2. Approve Logic
@@ -243,10 +325,13 @@ const SwapCard = () => {
                 try {
                     const hydratedStep = await LiFiService.getStepTransaction(step);
                     txData = hydratedStep.transactionRequest || hydratedStep.estimate?.transactionRequest;
+                    
+                    if (!txData) throw new Error("No transaction data returned from API");
+                    
                     console.log("Fetched Fresh Tx Data:", txData);
                 } catch (fetchErr) {
                     console.error("Failed to fetch fresh transaction:", fetchErr);
-                     // Allow to proceed only if we have txData from somewhere, else throw
+                    throw new Error(`Failed to prepare transaction: ${fetchErr.message}`);
                 }
             }
 
@@ -257,9 +342,13 @@ const SwapCard = () => {
             }
             
             const { from, gas, gasLimit, chainId, nonce, ...cleanTx } = txData;
-            const val = txData.value ? BigInt(txData.value) : 0n;
+            
+            // FIX: Ensure value is 0 for ERC20 swaps unless it's a native wrapper/unwrap
+            const isNativeSell = sellToken.address === '0x0000000000000000000000000000000000000000';
+            const val = isNativeSell ? (txData.value ? BigInt(txData.value) : 0n) : 0n;
             
             let limit = 500000n; // Default fallback
+            console.log("Sending TX:", { ...cleanTx, value: val });
             if (txData.gasLimit) {
                 limit = (BigInt(txData.gasLimit) * 125n) / 100n;
             }
@@ -336,10 +425,17 @@ const SwapCard = () => {
     );
 
     // Derived Button State
+
+    const hasInsufficientBalance = React.useMemo(() => {
+        if (!fromAmount || !tokenBalance) return false;
+        return parseFloat(fromAmount) > parseFloat(tokenBalance);
+    }, [fromAmount, tokenBalance]);
+
     const isWrongNetwork = account && activeChainId && (Number(activeChainId) !== fromChain.id);
-    const isButtonDisabled = isLoading || swapStatus !== 'idle' || (!activeRoute && !uiError && !error && !isWrongNetwork); 
+    const isButtonDisabled = swapStatus !== 'idle' || (!isWrongNetwork && (isLoading || (!activeRoute && !uiError && !error) || hasInsufficientBalance)); 
 
     const getButtonText = () => {
+        if (hasInsufficientBalance) return 'Insufficient Balance'; 
         if (swapStatus !== 'idle') return swapStatus.toUpperCase() + '...';
         if (isLoading) return 'Fetching Routes...';
         if (uiError || error) return 'Try Again';
@@ -412,7 +508,7 @@ const SwapCard = () => {
                         style={{ 
                             position: 'relative', 
                             width: '100%', 
-                            minHeight: '520px', 
+                            minHeight: '650px', 
                             transition: 'transform 0.6s cubic-bezier(0.4, 0.0, 0.2, 1)',
                             transformStyle: 'preserve-3d',
                             transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)'
@@ -423,9 +519,10 @@ const SwapCard = () => {
                             position: 'absolute', inset: 0, 
                             backfaceVisibility: 'hidden', 
                             WebkitBackfaceVisibility: 'hidden',
-                            background: '#0a0a0a', borderRadius: '24px', padding: '24px',
+                            background: 'linear-gradient(145deg, #0a0a0a, #121212)', borderRadius: '24px', padding: '24px', paddingBottom: '32px',
                             display: 'flex', flexDirection: 'column',
-                            pointerEvents: isFlipped ? 'none' : 'auto' // Disable when flipped
+                            pointerEvents: isFlipped ? 'none' : 'auto', // Disable when flipped
+                            boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)'
                         }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                                 <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: 'white' }}>Exchange</h2>
@@ -440,20 +537,20 @@ const SwapCard = () => {
                             </div>
 
                              {/* Swap Content */}
-                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 <AssetRow label="From" chain={fromChain} token={sellToken} onClick={openFromSelector} />
                                 
-                                <div style={{ display: 'flex', justifyContent: 'center', margin: '-14px 0', zIndex: 10 }}>
+                                <div style={{ display: 'flex', justifyContent: 'center', margin: '-18px 0', zIndex: 10, position: 'relative' }}>
                                      <div 
                                         onClick={() => { const c = fromChain; setFromChain(toChain); setToChain(c); const t = sellToken; setSellToken(buyToken); setBuyToken(t); }}
                                         style={{
                                             background: '#0a0a0a', border: '4px solid #0a0a0a', borderRadius: '12px',
-                                            width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            cursor: 'pointer'
+                                            width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
                                         }}
                                     >
-                                        <div style={{ background: '#1f1f1f', borderRadius: '8px', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            <ArrowDown size={18} color="#888" />
+                                        <div style={{ background: '#222', borderRadius: '8px', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: '0.2s' }}>
+                                            <ArrowDown size={20} color="#888" />
                                         </div>
                                     </div>
                                 </div>
@@ -502,7 +599,7 @@ const SwapCard = () => {
                             }}>
                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                                     <span style={{ fontSize: '0.8rem', color: '#888', fontWeight: 600 }}>Send Amount</span>
-                                    {balance && <span style={{ fontSize: '0.8rem', color: '#666' }}>Max: {parseFloat(balance).toFixed(4)}</span>}
+                                    {tokenBalance && <span style={{ fontSize: '0.8rem', color: '#666' }}>Max: {parseFloat(tokenBalance).toFixed(4)}</span>}
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                     <img src={sellToken?.logoURI} style={{ width: 32, height: 32, borderRadius: '50%' }} alt="" onError={e => e.target.src = 'https://etherscan.io/images/main/empty-token.png'} />
@@ -527,50 +624,45 @@ const SwapCard = () => {
                             </div>
 
                             {/* Action Button */}
-                            <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
-                                 {account ? (
-                                    isWrongNetwork ? (
-                                        <button 
-                                            onClick={handleSwitchNetwork}
-                                            style={{
-                                                width: '100%', background: '#ffcc00', color: 'black',
-                                                border: 'none', borderRadius: '16px', padding: '16px',
-                                                fontSize: '1.2rem', fontWeight: 700, cursor: 'pointer',
-                                            }}
-                                        >
-                                            Switch to {fromChain.name}
-                                        </button>
+                            <div style={{ marginTop: 'auto', paddingTop: '24px' }}>
+                                <button
+                                    disabled={account ? isButtonDisabled : false}
+                                    onClick={() => {
+                                        if (!account) connectWallet();
+                                        else if (isWrongNetwork) handleSwitchNetwork();
+                                        else if (swapStatus === 'idle') executeSwap();
+                                    }}
+                                    style={{
+                                        width: '100%', padding: '18px', borderRadius: '16px',
+                                        background: (isButtonDisabled && account && !isWrongNetwork) ? '#1f1f1f' : 'linear-gradient(135deg, #ff7120 0%, #ff4500 100%)',
+                                        color: (isButtonDisabled && account && !isWrongNetwork) ? '#666' : 'white',
+                                        border: 'none', fontSize: '1.2rem', fontWeight: 700,
+                                        cursor: (isButtonDisabled && account && !isWrongNetwork) ? 'not-allowed' : 'pointer',
+                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                        boxShadow: (isButtonDisabled && account && !isWrongNetwork) ? 'none' : '0 10px 30px -10px rgba(255, 69, 0, 0.5)',
+                                        transform: 'translateY(0)',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                                    }}
+                                    onMouseEnter={e => {
+                                        if (!isButtonDisabled || !account || isWrongNetwork) {
+                                            e.currentTarget.style.transform = 'translateY(-2px)';
+                                            e.currentTarget.style.boxShadow = '0 14px 40px -10px rgba(255, 69, 0, 0.6)';
+                                        }
+                                    }}
+                                    onMouseLeave={e => {
+                                        e.currentTarget.style.transform = 'translateY(0)';
+                                        e.currentTarget.style.boxShadow = (isButtonDisabled && account && !isWrongNetwork) ? 'none' : '0 10px 30px -10px rgba(255, 69, 0, 0.5)';
+                                    }}
+                                >
+                                    {!account ? (
+                                        <> <Wallet size={20} /> Connect Wallet </>
+                                    ) : isWrongNetwork ? (
+                                        `Switch to ${fromChain.name}`
                                     ) : (
-                                        <button 
-                                            onClick={executeSwap}
-                                            disabled={isButtonDisabled}
-                                            style={{
-                                                width: '100%',
-                                                background: (isButtonDisabled) ? '#1f1f1f' : 'linear-gradient(90deg, #FF7120 0%, #FF4500 100%)',
-                                                color: (isButtonDisabled) ? '#555' : 'white',
-                                                border: 'none', borderRadius: '16px', padding: '16px',
-                                                fontSize: '1.2rem', fontWeight: 700,
-                                                cursor: (isButtonDisabled) ? 'not-allowed' : 'pointer',
-                                            }}
-                                        >
-                                            {getButtonText()}
-                                        </button>
-                                    )
-                                 ) : (
-                                     <button 
-                                        onClick={connectWallet}
-                                        style={{
-                                            width: '100%', background: '#3f1a94', color: 'white', 
-                                            border: 'none', borderRadius: '16px', padding: '16px',
-                                            fontSize: '1.1rem', fontWeight: 700, cursor: 'pointer',
-                                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-                                        }}
-                                    >
-                                        <Wallet size={20} />
-                                        Connect Wallet
-                                    </button>
-                                 )}
-                            </div>
+                                        getButtonText()
+                                    )}
+                                </button>
+                             </div>
 
                              {/* Error Box */}
                             {(uiError || error) && (

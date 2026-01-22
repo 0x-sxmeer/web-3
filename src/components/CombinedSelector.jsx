@@ -11,15 +11,26 @@ const CombinedSelector = ({ isOpen, onClose, title, selectedChain, selectedToken
     // Internal state for the modal interaction
     const [activeChain, setActiveChain] = useState(selectedChain);
 
-    // 1. Fetch Chains on mount
+    // 1. Fetch Chains on mount & Aggressive Scroll Lock
     useEffect(() => {
         if (isOpen) {
+            // Lock Body & HTML Scroll
+            document.body.style.overflow = 'hidden';
+            document.documentElement.style.overflow = 'hidden';
+            
             const loadChains = async () => {
                 const list = await LiFiService.getChains();
                 setChains(list);
             };
             loadChains();
+        } else {
+            document.body.style.overflow = '';
+            document.documentElement.style.overflow = '';
         }
+        return () => { 
+            document.body.style.overflow = '';
+            document.documentElement.style.overflow = '';
+        };
     }, [isOpen]);
 
     // 2. Sync activeChain with prop when modal opens
@@ -31,15 +42,22 @@ const CombinedSelector = ({ isOpen, onClose, title, selectedChain, selectedToken
 
     // 3. Fetch Tokens when activeChain changes
     useEffect(() => {
+        let ignore = false;
         if (isOpen && activeChain) {
             const loadTokens = async () => {
                 setIsLoadingTokens(true);
-                const list = await LiFiService.getTokens(activeChain.id);
-                setTokens(list);
-                setIsLoadingTokens(false);
+                try {
+                    const list = await LiFiService.getTokens(activeChain.id);
+                    if (!ignore) setTokens(list);
+                } catch (e) {
+                    console.error("Token Load Error:", e);
+                } finally {
+                    if (!ignore) setIsLoadingTokens(false);
+                }
             };
             loadTokens();
         }
+        return () => { ignore = true; };
     }, [isOpen, activeChain]);
 
     // 4. Filter tokens
@@ -78,9 +96,13 @@ const CombinedSelector = ({ isOpen, onClose, title, selectedChain, selectedToken
             <div 
                 style={{ 
                     width: '800px', height: '600px', 
-                    background: '#121212', borderRadius: '24px', 
+                    background: 'rgba(18, 18, 18, 0.8)', // Semi-transparent
+                    backdropFilter: 'blur(24px)',         // Glass effect
+                    webkitBackdropFilter: 'blur(24px)',
+                    borderRadius: '24px', 
                     display: 'flex', flexDirection: 'column', 
-                    border: '1px solid #333', overflow: 'hidden',
+                    border: '1px solid rgba(255, 255, 255, 0.1)', // Subtle glass border
+                    overflow: 'hidden',
                     boxShadow: '0 40px 100px rgba(0,0,0,0.9)',
                     animation: 'scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
                 }}
@@ -98,13 +120,13 @@ const CombinedSelector = ({ isOpen, onClose, title, selectedChain, selectedToken
                 <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
                     
                     {/* LEFT COLUMN: TOKENS (60%) */}
-                    <div style={{ flex: '6', display: 'flex', flexDirection: 'column', borderRight: '1px solid #222' }}>
+                    <div style={{ flex: '6', display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(255, 255, 255, 0.1)', minHeight: 0 }}>
                         {/* Search Bar */}
                         <div style={{ padding: '16px' }}>
                             <div style={{ 
                                 background: '#1c1c1c', borderRadius: '12px', padding: '12px', 
                                 display: 'flex', alignItems: 'center', gap: '10px',
-                                border: '1px solid #333'
+                                border: '1px solid rgba(255, 255, 255, 0.1)'
                             }}>
                                 <Search size={18} color="#666" />
                                 <input 
@@ -118,7 +140,10 @@ const CombinedSelector = ({ isOpen, onClose, title, selectedChain, selectedToken
                         </div>
 
                         {/* Token List */}
-                        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px 16px' }}>
+                        <div 
+                            style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px 16px', overscrollBehavior: 'contain' }}
+                            data-lenis-prevent
+                        >
                             {isLoadingTokens ? (
                                 <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
                                     <Loader2 className="animate-spin" size={32} color="#ff7120" />
@@ -135,7 +160,7 @@ const CombinedSelector = ({ isOpen, onClose, title, selectedChain, selectedToken
                                             padding: '10px 12px', borderRadius: '12px', cursor: 'pointer',
                                             transition: 'background 0.2s', margin: '4px 0'
                                         }}
-                                        onMouseEnter={e => e.currentTarget.style.background = '#1f1f1f'}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
                                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -147,7 +172,7 @@ const CombinedSelector = ({ isOpen, onClose, title, selectedChain, selectedToken
                                             />
                                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                                 <span style={{ fontWeight: 600, fontSize: '1rem', color: '#eee' }}>{token.symbol}</span>
-                                                <span style={{ fontSize: '0.8rem', color: '#666' }}>{token.name}</span>
+                                                <span style={{ fontSize: '0.8rem', color: '#888' }}>{token.name}</span>
                                             </div>
                                         </div>
                                         {token.priceUSD && (
@@ -162,11 +187,14 @@ const CombinedSelector = ({ isOpen, onClose, title, selectedChain, selectedToken
                     </div>
 
                     {/* RIGHT COLUMN: NETWORKS (40%) */}
-                    <div style={{ flex: '4', display: 'flex', flexDirection: 'column', background: '#161616' }}>
+                    <div style={{ flex: '4', display: 'flex', flexDirection: 'column', background: 'rgba(0, 0, 0, 0.2)', minHeight: 0 }}>
                         <div style={{ padding: '16px', borderBottom: '1px solid #222', color: '#888', fontWeight: 600, fontSize: '0.9rem' }}>
                             Select Network
                         </div>
-                        <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+                        <div 
+                            style={{ flex: 1, overflowY: 'auto', padding: '8px', overscrollBehavior: 'contain' }}
+                            data-lenis-prevent
+                        >
                             {chains.map(chain => (
                                 <div 
                                     key={chain.id}

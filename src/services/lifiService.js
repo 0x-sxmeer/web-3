@@ -5,13 +5,21 @@ const cache = {
     tokens: {}
 };
 
+const API_URL = 'https://li.quest/v1';
+const API_KEY = import.meta.env.VITE_LIFI_API_KEY;
+
+const getHeaders = () => ({
+    'accept': 'application/json',
+    'x-lifi-api-key': API_KEY
+});
+
 export const LiFiService = {
-    // 1. Fetch all supported chains (Ethereum, Arbitrum, Base, Solana, etc.)
+    // 1. Fetch all supported chains
     getChains: async () => {
         if (cache.chains) return cache.chains;
 
         try {
-            const response = await fetch('/api/lifi/chains');
+            const response = await fetch(`${API_URL}/chains`, { headers: getHeaders() });
             if (!response.ok) throw new Error('Failed to fetch chains');
             
             const data = await response.json();
@@ -30,7 +38,7 @@ export const LiFiService = {
         if (cache.tokens[chainId]) return cache.tokens[chainId];
 
         try {
-            const response = await fetch(`/api/lifi/tokens?chains=${chainId}`);
+            const response = await fetch(`${API_URL}/tokens?chains=${chainId}`, { headers: getHeaders() });
             if (!response.ok) throw new Error('Failed to fetch tokens');
 
             const data = await response.json();
@@ -51,16 +59,15 @@ export const LiFiService = {
         }
     },
 
-    // 3. Fetch Tools (Bridges & Exchanges) [NEW]
+    // 3. Fetch Tools (Bridges & Exchanges)
     getTools: async () => {
         if (cache.tools) return cache.tools;
 
         try {
-            const response = await fetch('/api/lifi/tools');
+            const response = await fetch(`${API_URL}/tools`, { headers: getHeaders() });
             if (!response.ok) throw new Error('Failed to fetch tools');
             
             const data = await response.json();
-            // LI.FI returns { bridges: [...], exchanges: [...] }
             const tools = {
                 bridges: data.bridges || [],
                 exchanges: data.exchanges || []
@@ -77,9 +84,12 @@ export const LiFiService = {
     // 4. Fetch Transaction Data for a Step
     getStepTransaction: async (step) => {
         try {
-            const response = await fetch('/api/lifi/advanced/stepTransaction', {
+            const response = await fetch(`${API_URL}/advanced/stepTransaction`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...getHeaders()
+                },
                 body: JSON.stringify(step)
             });
 

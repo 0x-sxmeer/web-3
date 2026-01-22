@@ -20,7 +20,7 @@ const SwapPage = () => {
                     display: 'flex', 
                     alignItems: 'center', 
                     justifyContent: 'center', 
-                    padding: '120px 20px',
+                    padding: '60px 20px',
                     minHeight: 'calc(100vh - 80px - 200px)' // Account for Navbar/Footer approximation
                 }}>
                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

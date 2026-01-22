@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ethers } from 'ethers';
 
 export const useAggregator = () => {
@@ -16,7 +16,8 @@ export const useAggregator = () => {
     };
 
     const getRoutes = useCallback(async ({ 
-        sellToken, buyToken, amount, userAddress, fromChain, toChain, slippage = 0.005 
+        sellToken, buyToken, amount, userAddress, fromChain, toChain, slippage = 0.005,
+        allowBridges = [], allowExchanges = []
     }) => {
         if (!amount || parseFloat(amount) === 0) return;
         
@@ -37,32 +38,33 @@ export const useAggregator = () => {
                 fromAddress: userAddress || '0x0000000000000000000000000000000000000000',
                 options: { 
                     slippage: slippage,
-                    order: 'RECOMMENDED'
+                    bridges: allowBridges.length > 0 ? { allow: allowBridges } : undefined,
+                    exchanges: allowExchanges.length > 0 ? { allow: allowExchanges } : undefined
                 }
             };
 
             console.log("Fetching Routes Payload:", JSON.stringify(payload));
 
-            // Use /api/lifi/advanced/routes to utilize the Vite proxy (handles CORS + API Key)
-            const getResponse = await fetch('/api/lifi/advanced/routes', {
+            // Use direct API call (Frontend-only approach)
+            const response = await fetch('https://li.quest/v1/advanced/routes', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'x-lifi-api-key': import.meta.env.VITE_LIFI_API_KEY
                 },
                 body: JSON.stringify(payload)
             });
             
-            if (!getResponse.ok) {
-                const text = await getResponse.text();
+            if (!response.ok) {
+                const text = await response.text();
                 console.error("API Error Response:", text);
                 try {
                     const json = JSON.parse(text);
-                    // Code 1003 usually means specific route issues (like min amount)
                     throw new Error(json.message || `No routes found (Code: ${json.code})`);
                 } catch (e) { throw new Error(e.message || text || "API Error"); }
             }
 
-            const data = await getResponse.json();
+            const data = await response.json();
             const validRoutes = data.routes || [];
 
             if (validRoutes.length === 0) throw new Error("No routes found");
@@ -75,17 +77,25 @@ export const useAggregator = () => {
                     provider: step.toolDetails?.name || step.tool,
                     logo: step.toolDetails?.logoURI,
                     output: route.toAmount,
-                    outputDecimals: data.toToken?.decimals || 18, // Sometimes at root
+                    outputDecimals: data.toToken?.decimals || 18, 
                     gasCostUsd: route.gasCostUSD,
                     netValueUsd: route.toAmountUSD,
                     steps: route.steps,
-                    tags: index === 0 ? ['BEST'] : [], // First one is usually best
+                    tags: index === 0 ? ['BEST'] : [], 
                     raw: route
                 };
             });
 
             setRoutes(processedRoutes);
-            setActiveRoute(processedRoutes[0]); // Default to best
+            
+            // Smart Update: Keep active route if it's still valid (in the new list), otherwise pick best
+            setActiveRoute(prev => {
+                if (prev) {
+                    const stillExists = processedRoutes.find(r => r.id === prev.id);
+                    if (stillExists) return stillExists; // Update with fresh data
+                }
+                return processedRoutes[0]; // Default to best
+            });
 
         } catch (err) {
             setError(err.message || "Failed to find routes");
@@ -93,6 +103,19 @@ export const useAggregator = () => {
             setIsLoading(false);
         }
     }, []);
+
+    // Polling Logic
+    useEffect(() => {
+        let interval;
+        if (activeRoute && !isLoading && !error) {
+            interval = setInterval(() => {
+                console.log("🔄 Refreshing routes...");
+                // Note: We need to store latest params in a ref to properly re-fetch
+                // For now, this is a placeholder. To fully implement, we need to lift params state or use a ref.
+            }, 20000);
+        }
+        return () => clearInterval(interval);
+    }, [activeRoute, isLoading, error]);
 
     return { getRoutes, routes, activeRoute, setActiveRoute, isLoading, error };
 };
